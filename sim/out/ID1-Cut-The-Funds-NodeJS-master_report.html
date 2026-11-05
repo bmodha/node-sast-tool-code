@@ -1,0 +1,956 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Code review simulation</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0d1117;
+      --card: #161b22;
+      --ink: #e6edf3;
+      --muted: #8b949e;
+      --line: #30363d;
+      --soft: #21262d;
+      --accent: #58a6ff;
+      --accent-soft: #1c2d41;
+      --panel: #0d1117;
+      --critical: #f85149;
+      --high: #db6d28;
+      --medium: #d29922;
+      --low: #388bfd;
+      --info: #6e7681;
+      --clear: #3fb950;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: "Segoe UI", system-ui, sans-serif;
+      margin: 0;
+      color: var(--ink);
+      background: var(--bg);
+      line-height: 1.45;
+    }
+    .page { max-width: 1440px; margin: 0 auto; padding: 1.4rem 1.25rem 2.5rem; }
+    h1 { font-size: 1.45rem; font-weight: 650; letter-spacing: -0.02em; margin: 0 0 0.9rem; }
+    h2 { font-size: 1.02rem; font-weight: 650; color: var(--ink); margin: 0 0 0.45rem; }
+    h2 .count { font-size: 0.82rem; font-weight: 500; color: var(--muted); margin-left: 0.35rem; }
+    a { color: var(--accent); }
+    .top {
+      display: grid;
+      grid-template-columns: minmax(0, 1.55fr) minmax(16rem, 0.72fr);
+      gap: 0.9rem;
+      align-items: stretch;
+    }
+    .lead { display: grid; gap: 0.85rem; align-content: start; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 0.95rem 1.05rem 1.05rem;
+    }
+    .saved { margin: 0 0 0.75rem; color: var(--muted); font-size: 0.86rem; }
+    .meta { display: grid; gap: 0.32rem; margin: 0; }
+    .meta .field { position: relative; display: grid; grid-template-columns: 7.6rem minmax(0, 1fr); gap: 0.75rem; align-items: start; cursor: help; }
+    .field:hover, .field:focus-within { z-index: 5; }
+    .meta dt {
+      color: var(--muted);
+      font-size: 0.82rem;
+      padding-top: 0.08rem;
+      width: fit-content;
+      border-bottom: 1px dotted var(--muted);
+      cursor: help;
+    }
+    .meta dd { margin: 0; overflow-wrap: anywhere; }
+    .hint {
+      display: none;
+      position: absolute;
+      z-index: 4;
+      left: 0;
+      top: calc(100% + 0.2rem);
+      width: max-content;
+      max-width: 22rem;
+      margin: 0;
+      padding: 0.45rem 0.6rem;
+      background: #1c2128;
+      color: var(--ink);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      font-size: 0.78rem;
+      line-height: 1.35;
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55);
+    }
+    .field:hover .hint, .field:focus-within .hint { display: block; }
+    .summary { margin: 0; }
+    .analyzers { list-style: none; margin: 0; padding: 0; }
+    .analyzers li {
+      display: grid;
+      grid-template-columns: 0.55rem 1fr;
+      column-gap: 0.55rem;
+      row-gap: 0.05rem;
+      padding: 0.4rem 0;
+      border-bottom: 1px solid var(--soft);
+    }
+    .analyzers li:last-child { border-bottom: 0; padding-bottom: 0; }
+    .an-name { font-weight: 650; }
+    .an-status { grid-column: 2; color: var(--muted); font-size: 0.84rem; }
+    .empty-analyzer { color: var(--muted); display: block; }
+    .dot { width: 0.5rem; height: 0.5rem; border-radius: 50%; margin-top: 0.38rem; }
+    .dot-ok { background: var(--clear); }
+    .dot-skipped { background: var(--info); }
+    .dot-other { background: var(--accent); }
+    .findings, .history, .charts { margin-top: 0.9rem; }
+    .charts { display: grid; grid-template-columns: 1fr 1fr; gap: 0.9rem; }
+    .note { margin: 0 0 0.75rem; color: var(--muted); font-size: 0.86rem; }
+    .history ul { margin: 0; padding-left: 1.15rem; }
+    .history li { margin: 0.28rem 0; }
+    .back { margin: 0.7rem 0 0; }
+    .tools { margin: 0 0 0.65rem; }
+    .tools button, th button {
+      font: inherit;
+      color: var(--ink);
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 0.28rem 0.6rem;
+      cursor: pointer;
+    }
+    .tools button:hover, th button:hover { background: var(--accent-soft); }
+    th button { border: 0; background: none; border-radius: 6px; padding: 0; font-weight: 700; color: inherit; text-align: left; }
+    .wrap { overflow-x: auto; container-type: inline-size; }
+    table { border-collapse: collapse; width: 100%; min-width: 68rem; background: var(--card); }
+    .problem { min-width: 12rem; }
+    .code { min-width: 18rem; }
+    td:last-child { min-width: 6.2rem; }
+    th, td { padding: 0.48rem 0.55rem; text-align: left; font-size: 0.86rem; vertical-align: top; border-bottom: 1px solid var(--soft); }
+    thead th { background: var(--soft); color: var(--muted); }
+    th[aria-sort="ascending"] button::after { content: " ↑"; }
+    th[aria-sort="descending"] button::after { content: " ↓"; }
+    .filters th { background: var(--card); }
+    .filters input, .filters select {
+      width: 100%;
+      box-sizing: border-box;
+      font: inherit;
+      font-size: 0.75rem;
+      padding: 0.22rem 0.3rem;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--panel);
+      color: var(--ink);
+    }
+    tbody.finding:hover td { background: var(--soft); }
+    code {
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 0.8rem;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      background: var(--panel);
+      color: var(--ink);
+      border-radius: 4px;
+      padding: 0.12rem 0.28rem;
+    }
+    .where { white-space: normal; }
+    .muted { color: var(--muted); font-size: 0.8rem; }
+    .chip {
+      display: inline-block;
+      padding: 0.08rem 0.48rem;
+      border-radius: 999px;
+      font-weight: 650;
+      font-size: 0.78rem;
+      text-transform: capitalize;
+      letter-spacing: 0.01em;
+    }
+    .check { text-transform: none; }
+    .risk-critical, .status-block, .check-failure { background: #3d1214; color: #ff7b72; }
+    .risk-high { background: #3d220c; color: #f0883e; }
+    .risk-medium, .status-comment { background: #3d2e0a; color: #e3b341; }
+    .risk-low { background: #0d2847; color: #79c0ff; }
+    .status-clear, .check-success { background: #0f2d1a; color: #56d364; }
+    .risk-info { background: #21262d; color: #8b949e; }
+    .risk-select {
+      font: inherit;
+      font-weight: 650;
+      font-size: 0.78rem;
+      border-radius: 999px;
+      border: 1px solid transparent;
+      padding: 0.12rem 0.35rem;
+      cursor: pointer;
+      max-width: 9.8rem;
+    }
+    .risk-select:disabled { cursor: progress; opacity: 0.7; }
+    .subclass { font-weight: 650; }
+    tbody.finding[hidden] { display: none; }
+    details { margin: 0; }
+    summary { cursor: pointer; color: var(--ink); }
+    .similar-toggle {
+      display: block;
+      margin-top: 0.28rem;
+      padding: 0;
+      border: 0;
+      background: none;
+      color: var(--muted);
+      font: inherit;
+      font-size: 0.8rem;
+      text-align: left;
+      cursor: pointer;
+      width: fit-content;
+    }
+    .similar-toggle:hover { color: var(--accent); }
+    .similar-row > td { background: #10151c; padding: 0.75rem 0.7rem 0.9rem; }
+    table.compare {
+      min-width: 0;
+      width: min(100%, calc(100cqw - 1.4rem));
+      position: sticky;
+      left: 0.7rem;
+      background: transparent;
+    }
+    table.compare th:nth-child(4), table.compare td:nth-child(4) { width: 46%; }
+    table.compare th:nth-child(5), table.compare td:nth-child(5) { white-space: nowrap; }
+    .compare-note { margin: 0.45rem 0 0; }
+    .triage { display: grid; gap: 0.35rem; margin-top: 0.45rem; }
+    .triage p { margin: 0; }
+    .triage .k { font-weight: 650; }
+    .bars { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.55rem; }
+    .bars li { display: grid; grid-template-columns: 7.6rem 1fr 2rem; gap: 0.6rem; align-items: center; }
+    .bar-label { color: var(--muted); font-size: 0.88rem; }
+    .bar-track { height: 0.72rem; background: var(--soft); border-radius: 999px; overflow: hidden; }
+    .bar-fill { display: block; height: 100%; border-radius: 999px; min-width: 0; }
+    .bar-count { text-align: right; font-variant-numeric: tabular-nums; font-weight: 650; }
+    .fill-critical, .fill-block { background: var(--critical); }
+    .fill-high { background: var(--high); }
+    .fill-medium, .fill-comment { background: var(--medium); }
+    .fill-low { background: var(--low); }
+    .fill-clear { background: var(--clear); }
+    .fill-info { background: var(--info); }
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    @media (max-width: 860px) {
+      .top, .charts { grid-template-columns: 1fr; }
+      .where { white-space: normal; }
+    }
+  </style>
+</head>
+<body data-role="appsec" data-rating-url="" data-rating-token="">
+  <div class="page">
+    <h1>Code review simulation</h1>
+    <div class="top">
+      <div class="lead">
+        <section class="card">
+          <dl class="meta">
+            <div class="field" tabindex="0"><dt>Repository<p class="hint" role="tooltip">The repository this scan reviewed.</p></dt><dd>ID1-Cut-The-Funds-NodeJS-master</dd></div>
+            <div class="field" tabindex="0"><dt>Report<p class="hint" role="tooltip">This scan's report file. Earlier versions are listed at the bottom with the date and time they were saved.</p></dt><dd>ID1-Cut-The-Funds-NodeJS-master_report.html</dd></div>
+            <div class="field" tabindex="0"><dt>Role<p class="hint" role="tooltip">Who is viewing this report. AppSec also sees why a check fired and redacted secret previews.</p></dt><dd>appsec</dd></div>
+            <div class="field" tabindex="0"><dt>Deployment<p class="hint" role="tooltip">Failed or Passed. Failed means at least one finding blocks deployment. Passed means none do.</p></dt><dd><span class="chip check check-failure">Failed</span></dd></div>
+            <div class="field" tabindex="0"><dt>Why<p class="hint" role="tooltip">The reason this deployment failed or passed.</p></dt><dd>Deployment failed because 5 findings block it.</dd></div>
+            <div class="field" tabindex="0"><dt>Data class<p class="hint" role="tooltip">How sensitive the service is: public, internal, or restricted. Restricted can turn a high finding into a block.</p></dt><dd>restricted</dd></div>
+            <div class="field" tabindex="0"><dt>Cache hit<p class="hint" role="tooltip">Yes or no. Yes means this commit was already scanned with the same rules, so the analyzers did not run again.</p></dt><dd>yes</dd></div>
+            <div class="field" tabindex="0"><dt>System 2<p class="hint" role="tooltip">The model review. Not run means only the rule checks produced these findings.</p></dt><dd>not_run</dd></div>
+            <div class="field" tabindex="0"><dt>Corpus<p class="hint" role="tooltip">The set of known-vulnerable samples this scan was compared with.</p></dt><dd>4c1da21c019a251cdd212bfb80cb4fe5a27ed69c548c2a2f70a6acdb636db09a</dd></div>
+            <div class="field" tabindex="0"><dt>Commit<p class="hint" role="tooltip">The commit that was scanned.</p></dt><dd>5b6ce62dddac</dd></div>
+          </dl>
+        </section>
+        <section class="card">
+          <h2>Summary</h2>
+          <p class="summary">6 high, 19 medium. Removed 1 weaker SQL literal covered by a concatenation finding.</p>
+        </section>
+      </div>
+      <aside class="card">
+        <h2>Analyzers</h2>
+        <ul class="analyzers"><li><span class="dot dot-ok" aria-hidden="true"></span><span class="an-name">eslint</span><span class="an-status">ok</span></li><li><span class="dot dot-ok" aria-hidden="true"></span><span class="an-name">templates</span><span class="an-status">ok</span></li><li><span class="dot dot-ok" aria-hidden="true"></span><span class="an-name">advisories</span><span class="an-status">ok</span></li><li><span class="dot dot-ok" aria-hidden="true"></span><span class="an-name">npm-audit</span><span class="an-status">ok</span></li><li><span class="dot dot-skipped" aria-hidden="true"></span><span class="an-name">gitleaks</span><span class="an-status">skipped</span></li><li><span class="dot dot-skipped" aria-hidden="true"></span><span class="an-name">trivy</span><span class="an-status">skipped</span></li></ul>
+      </aside>
+    </div>
+    <section class="findings card">
+      <h2>Findings <span id="finding-count" class="count"></span></h2>
+      <p class="note">Choose a risk rating to save it in the local database. The choices are informational, low, medium, high, and critical.</p>
+      <p id="risk-status" class="note" role="status"></p>
+      <p class="tools"><button type="button" id="clear-filters">Clear filters</button></p>
+      <div class="wrap">
+      <table id="findings">
+        <thead>
+          <tr><th data-sort="risk" aria-sort="none"><button type="button">Risk</button></th><th data-sort="class" aria-sort="none"><button type="button">Class</button></th><th data-sort="subclass" aria-sort="none"><button type="button">Subclass</button></th><th data-sort="finding" aria-sort="none"><button type="button">Finding</button></th><th data-sort="problem" aria-sort="none"><button type="button">Problem</button></th><th data-sort="where" aria-sort="none"><button type="button">Location</button></th><th data-sort="code" aria-sort="none"><button type="button">Code</button></th><th data-sort="confidence" aria-sort="none"><button type="button">Confidence (0–1)</button></th><th data-sort="next" aria-sort="none"><button type="button">Next step</button></th><th data-sort="gate" aria-sort="none"><button type="button">Pull Status</button></th></tr>
+          <tr class="filters"><th><select data-filter="risk" aria-label="Filter Risk"><option value="">All</option><option value="high">high</option><option value="medium">medium</option></select></th><th><select data-filter="class" aria-label="Filter Class"><option value="">All</option><option value="Authentication">Authentication</option><option value="Cross-site scripting">Cross-site scripting</option><option value="Deserialization">Deserialization</option><option value="Error handling">Error handling</option><option value="Injection">Injection</option><option value="Security configuration">Security configuration</option><option value="Sensitive data">Sensitive data</option></select></th><th><select data-filter="subclass" aria-label="Filter Subclass"><option value="">All</option><option value="Cross-site scripting">Cross-site scripting</option><option value="Framework fingerprint">Framework fingerprint</option><option value="Information disclosure">Information disclosure</option><option value="Insecure deserialization">Insecure deserialization</option><option value="JWT algorithm not pinned">JWT algorithm not pinned</option><option value="Log injection">Log injection</option><option value="SQL injection">SQL injection</option><option value="Sensitive data in response">Sensitive data in response</option><option value="Unverified JWT">Unverified JWT</option></select></th><th><input data-filter="finding" aria-label="Filter Finding" placeholder="Filter"></th><th><input data-filter="problem" aria-label="Filter Problem" placeholder="Filter"></th><th><input data-filter="where" aria-label="Filter Location" placeholder="Filter"></th><th><input data-filter="code" aria-label="Filter Code" placeholder="Filter"></th><th><select data-filter="confidence" aria-label="Filter Confidence (0–1)"><option value="">All</option><option value="high">high</option><option value="medium">medium</option></select></th><th><input data-filter="next" aria-label="Filter Next step" placeholder="Filter"></th><th><select data-filter="gate" aria-label="Filter Pull Status"><option value="">All</option><option value="block">block</option><option value="comment">comment</option></select></th></tr>
+        </thead>
+        <tbody class="finding" data-risk="high" data-risk-rank="1" data-class="Authentication" data-subclass="JWT algorithm not pinned" data-finding="JWT verification does not pin an algorithm" data-problem="verify does not pin an algorithm. A caller can present a token under a weaker algorithm the library still accepts." data-where="Cut-The-Funds-NodeJS-master/controllers/auth.controller.js:11; Cut-The-Funds-NodeJS-master/controllers/auth.controller.js:50; Cut-The-Funds-NodeJS-master/controllers/auth.controller.js:96; Cut-The-Funds-NodeJS-master/controllers/auth.controller.js:140" data-code="let decoded = jwt.verify(tokenHeader, conf.secret); let decoded = jwt.verify(tokenHeader, conf.secret); let decoded = jwt.verify(tokenHeader, conf.secret); let decoded = jwt.verify(tokenHeader, conf.secret);" data-confidence="medium" data-confidence-rank="1" data-next="Confirm verify allows one explicit algorithm" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-high" data-finding="9f9a8358-6eb8-4674-a6d9-3ae7635d411f" aria-label="Risk rating"><option value="critical">critical</option><option value="high" selected>high</option><option value="medium">medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Authentication</td>
+      <td class="subclass">JWT algorithm not pinned</td>
+      <td>JWT verification does not pin an algorithm</td>
+      <td class="problem">verify does not pin an algorithm. A caller can present a token under a weaker algorithm the library still accepts.</td>
+      <td class="where">Cut-The-Funds-NodeJS-master/controllers/auth.controller.js:11; Cut-The-Funds-NodeJS-master/controllers/auth.controller.js:50; Cut-The-Funds-NodeJS-master/controllers/auth.controller.js:96; Cut-The-Funds-NodeJS-master/controllers/auth.controller.js:140</td>
+      <td class="code"><code>let decoded = jwt.verify(tokenHeader, conf.secret);
+
+let decoded = jwt.verify(tokenHeader, conf.secret);
+
+let decoded = jwt.verify(tokenHeader, conf.secret);
+
+let decoded = jwt.verify(tokenHeader, conf.secret);</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm verify allows one explicit algorithm</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> verify allows none, omits algorithms, or decode is used. It looks for jwt.verify or jwt.decode.</p><p><span class="k">Clears when.</span> algorithms allowlist is present.</p><p><span class="k">Cannot see.</span> Replay, refresh reuse, PKCE, OAuth state, OIDC nonce, and SAML need a protocol trace.</p><p>Clone likeness: 0.266. Patched twin: 0.219.</p><p class="muted">CWE-347 · js.jwt.verify · waiver id 81c24cb64c75df26</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="high" data-risk-rank="1" data-class="Authentication" data-subclass="Unverified JWT" data-finding="JWT decoded without signature verification" data-problem="The token is decoded and the signature is not checked. A caller can supply any payload and the server will trust it." data-where="Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:204" data-code="let validObject = jwt.decode(tokenHeader);" data-confidence="high" data-confidence-rank="0" data-next="Confirm verify allows one explicit algorithm" data-gate="block" data-gate-rank="0">
+    <tr>
+      <td><select class="risk-select risk-high" data-finding="1c88996a-778f-438e-ae67-16fe28c1d8b8" aria-label="Risk rating"><option value="critical">critical</option><option value="high" selected>high</option><option value="medium">medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Authentication</td>
+      <td class="subclass">Unverified JWT</td>
+      <td>JWT decoded without signature verification</td>
+      <td class="problem">The token is decoded and the signature is not checked. A caller can supply any payload and the server will trust it.</td>
+      <td class="where">Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:204</td>
+      <td class="code"><code>let validObject = jwt.decode(tokenHeader);</code></td>
+      <td>high (0.90)</td>
+      <td>Confirm verify allows one explicit algorithm</td>
+      <td><span class="chip status-block">block</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> verify allows none, omits algorithms, or decode is used. It looks for jwt.verify or jwt.decode.</p><p><span class="k">Clears when.</span> algorithms allowlist is present.</p><p><span class="k">Cannot see.</span> Replay, refresh reuse, PKCE, OAuth state, OIDC nonce, and SAML need a protocol trace.</p><p>Clone likeness: 0.203. Patched twin: 0.25.</p><p class="muted">CWE-347 · js.jwt.verify · waiver id b44de7d2e75d3d0b</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="high" data-risk-rank="1" data-class="Deserialization" data-subclass="Insecure deserialization" data-finding="Insecure YAML load" data-problem="yaml.load accepts a document that can name objects. If the document is untrusted, the parser can build objects the application did not expect." data-where="Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:238" data-code="let y = yaml.load(ystring);" data-confidence="high" data-confidence-rank="0" data-next="Confirm this parser is not given untrusted data" data-gate="block" data-gate-rank="0">
+    <tr>
+      <td><select class="risk-select risk-high" data-finding="2d88bc42-b7c3-4ad7-b594-0c8181d4c127" aria-label="Risk rating"><option value="critical">critical</option><option value="high" selected>high</option><option value="medium">medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Deserialization</td>
+      <td class="subclass">Insecure deserialization</td>
+      <td>Insecure YAML load</td>
+      <td class="problem">yaml.load accepts a document that can name objects. If the document is untrusted, the parser can build objects the application did not expect.</td>
+      <td class="where">Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:238</td>
+      <td class="code"><code>let y = yaml.load(ystring);</code></td>
+      <td>high (0.90)</td>
+      <td>Confirm this parser is not given untrusted data</td>
+      <td><span class="chip status-block">block</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> A deserializer known to accept object graphs is called. It looks for unserialize, yaml.load, or unsafeLoad.</p><p><span class="k">Clears when.</span> safe load or JSON parse of a checked shape is present.</p><p><span class="k">Cannot see.</span> Pickle, Java, and .NET need other parsers. No gadget chain is reconstructed.</p><p>Clone likeness: 0.203. Patched twin: 0.25.</p><p class="muted">CWE-502 · js.deser.unserialize · waiver id 220ade8c0dfefdea</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="high" data-risk-rank="1" data-class="Cross-site scripting" data-subclass="Cross-site scripting" data-finding="Cross-site scripting via HTML sink" data-problem="A value that is not a fixed string is written as HTML. This line does not show request data. If a user controls the value, the browser can run it in another user's session." data-where="Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:354" data-code="res.write('&lt;br&gt;&lt;br&gt;&lt;br&gt;&lt;br&gt;&lt;br&gt;&lt;br&gt;&lt;br&gt;&lt;br&gt;&lt;br&gt;&lt;br&gt;&lt;br&gt;&lt;br&gt;&lt;center&gt;&lt;h1&gt;Could not find: &lt;a&gt;' + url + '&lt;/a&gt; &lt;/h1&gt;&lt;/center&gt;');" data-confidence="high" data-confidence-rank="0" data-next="Confirm this HTML is not taken from a request" data-gate="block" data-gate-rank="0">
+    <tr>
+      <td><select class="risk-select risk-high" data-finding="a8cc44f1-0a6f-4bc6-bdce-10144655dd66" aria-label="Risk rating"><option value="critical">critical</option><option value="high" selected>high</option><option value="medium">medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Cross-site scripting</td>
+      <td class="subclass">Cross-site scripting</td>
+      <td>Cross-site scripting via HTML sink</td>
+      <td class="problem">A value that is not a fixed string is written as HTML. This line does not show request data. If a user controls the value, the browser can run it in another user's session.</td>
+      <td class="where">Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:354</td>
+      <td class="code"><code>res.write('&lt;br&gt;&lt;br&gt;&lt;br&gt;&lt;br&gt;&lt;br&gt;&lt;br&gt;&lt;br&gt;&lt;br&gt;&lt;br&gt;&lt;br&gt;&lt;br&gt;&lt;br&gt;&lt;center&gt;&lt;h1&gt;Could not find: &lt;a&gt;' + url + '&lt;/a&gt; &lt;/h1&gt;&lt;/center&gt;');</code></td>
+      <td>high (0.90)</td>
+      <td>Confirm this HTML is not taken from a request</td>
+      <td><span class="chip status-block">block</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> A markup string or HTML sink receives a non-literal value. It looks for dangerouslySetInnerHTML, innerHTML, or response HTML string.</p><p><span class="k">Clears when.</span> text assignment or escaped text is present.</p><p><span class="k">Cannot see.</span> Reflected, stored, DOM, and context variants are not separated. Repeated copies of the same sink in one file are one finding that lists each line.</p><p>Clone likeness: 0.203. Patched twin: 0.25.</p><p class="muted">CWE-79 · js.xss.dangerous-html · waiver id 1c8bad9f6a9ba2c5</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="high" data-risk-rank="1" data-class="Injection" data-subclass="SQL injection" data-finding="SQL injection via concatenated query" data-problem="Request data is joined into the SQL. A caller can change the query and read or modify rows." data-where="Cut-The-Funds-NodeJS-master/controllers/project.controller.js:131" data-code="let dynamicQuery = &quot;SELECT country, currency_code from currency WHERE country = '&quot; + req.body.search + &quot;'&quot;;" data-confidence="high" data-confidence-rank="0" data-next="Confirm this value reaches a query call" data-gate="block" data-gate-rank="0">
+    <tr>
+      <td><select class="risk-select risk-high" data-finding="3e668d67-24a3-46c9-91ab-4339bc56d576" aria-label="Risk rating"><option value="critical">critical</option><option value="high" selected>high</option><option value="medium">medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Injection</td>
+      <td class="subclass">SQL injection</td>
+      <td>SQL injection via concatenated query</td>
+      <td class="problem">Request data is joined into the SQL. A caller can change the query and read or modify rows.</td>
+      <td class="where">Cut-The-Funds-NodeJS-master/controllers/project.controller.js:131</td>
+      <td class="code"><code>let dynamicQuery = &quot;SELECT country, currency_code from currency WHERE country = '&quot; + req.body.search + &quot;'&quot;;</code></td>
+      <td>high (0.90)</td>
+      <td>Confirm this value reaches a query call</td>
+      <td><span class="chip status-block">block</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> The query text is built with a non-literal value. It looks for string concatenation, template literal, or ORDER BY fragment.</p><p><span class="k">Clears when.</span> bound parameter is present.</p><p><span class="k">Cannot see.</span> Blind, time-based, UNION, stacked, and second-order SQL are the same sink. Statement type is not a separate finding.</p><p>Clone likeness: 0.25. Patched twin: 0.234.</p><p class="muted">CWE-89 · js.sqli.string-concat · waiver id 90d42f6df73c447d</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="high" data-risk-rank="1" data-class="Deserialization" data-subclass="Insecure deserialization" data-finding="Insecure deserialization via unserialize" data-problem="unserialize rebuilds objects from a payload. If that payload is untrusted, constructing the objects can run code the application did not call." data-where="Cut-The-Funds-NodeJS-master/controllers/project.controller.js:153" data-code="serialize.unserialize(payload);" data-confidence="high" data-confidence-rank="0" data-next="Confirm this parser is not given untrusted data" data-gate="block" data-gate-rank="0">
+    <tr>
+      <td><select class="risk-select risk-high" data-finding="6edc4fa1-f4ff-48d0-b93d-9185ca7f3455" aria-label="Risk rating"><option value="critical">critical</option><option value="high" selected>high</option><option value="medium">medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Deserialization</td>
+      <td class="subclass">Insecure deserialization</td>
+      <td>Insecure deserialization via unserialize</td>
+      <td class="problem">unserialize rebuilds objects from a payload. If that payload is untrusted, constructing the objects can run code the application did not call.</td>
+      <td class="where">Cut-The-Funds-NodeJS-master/controllers/project.controller.js:153</td>
+      <td class="code"><code>serialize.unserialize(payload);</code></td>
+      <td>high (0.90)</td>
+      <td>Confirm this parser is not given untrusted data</td>
+      <td><span class="chip status-block">block</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> A deserializer known to accept object graphs is called. It looks for unserialize, yaml.load, or unsafeLoad.</p><p><span class="k">Clears when.</span> safe load or JSON parse of a checked shape is present.</p><p><span class="k">Cannot see.</span> Pickle, Java, and .NET need other parsers. No gadget chain is reconstructed.</p><p>Clone likeness: 0.25. Patched twin: 0.234.</p><p class="muted">CWE-502 · js.deser.unserialize · waiver id 3fbcdc848aa526da</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Security configuration" data-subclass="Framework fingerprint" data-finding="X-Powered-By header left on" data-problem="This file starts Express and does not disable X-Powered-By. Responses advertise the framework." data-where="Cut-The-Funds-NodeJS-master/app.js:20" data-code="const app = express();" data-confidence="medium" data-confidence-rank="1" data-next="Confirm the framework name header is disabled" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="34decb7c-1274-4bda-888f-9dd356006ec3" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Security configuration</td>
+      <td class="subclass">Framework fingerprint</td>
+      <td>X-Powered-By header left on</td>
+      <td class="problem">This file starts Express and does not disable X-Powered-By. Responses advertise the framework.</td>
+      <td class="where">Cut-The-Funds-NodeJS-master/app.js:20</td>
+      <td class="code"><code>const app = express();</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm the framework name header is disabled</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> The file calls express() and does not disable x-powered-by. It looks for express().</p><p><span class="k">Clears when.</span> disable x-powered-by is present.</p><p><span class="k">Cannot see.</span> A disable call in another file is not visible.</p><p>Clone likeness: 0.203. Patched twin: 0.188.</p><p class="muted">CWE-200 · js.config.powered-by · waiver id 850801957a1941ca</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Injection" data-subclass="Log injection" data-finding="Log injection" data-problem="Request data is written into a log line. A newline in that value can forge later log entries." data-where="Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:33; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:67; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:93; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:132; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:159; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:184; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:212; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:241; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:267; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:279; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:295" data-code="log.info(req); log.info(req); log.info(req); log.info(req); log.info(req); log.info(req); log.info(req); log.info(req); log.info(req); log.info(req); log.info(req);" data-confidence="medium" data-confidence-rank="1" data-next="Confirm control characters are stripped before this write" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="655e39ab-f0f2-41ad-bed4-86d3a966854a" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Injection</td>
+      <td class="subclass">Log injection</td>
+      <td>Log injection</td>
+      <td class="problem">Request data is written into a log line. A newline in that value can forge later log entries.</td>
+      <td class="where">Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:33; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:67; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:93; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:132; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:159; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:184; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:212; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:241; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:267; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:279; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:295</td>
+      <td class="code"><code>log.info(req);
+
+log.info(req);
+
+log.info(req);
+
+log.info(req);
+
+log.info(req);
+
+log.info(req);
+
+log.info(req);
+
+log.info(req);
+
+log.info(req);
+
+log.info(req);
+
+log.info(req);</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm control characters are stripped before this write</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> Request data reaches a header, mail, log, or CSV call. It looks for setHeader, sendMail, log, or writeCsv.</p><p><span class="k">Clears when.</span> stripCrlf, structured log, or CSV escape is present.</p><p><span class="k">Cannot see.</span> Passwords, tokens, and req.body are reported by the sensitive-log rule instead.</p><p>Clone likeness: 0.203. Patched twin: 0.25.</p><p class="muted">CWE-93, CWE-117 · js.control.char · waiver id c81c28fb22fed897</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Error handling" data-subclass="Information disclosure" data-finding="Error detail sent to the client" data-problem="The response includes an error object, message, or stack. The client learns internal paths, queries, or library details." data-where="Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:37; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:71; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:78; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:97; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:105; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:122; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:136; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:145; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:163; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:171; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:189; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:198; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:216; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:225; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:249; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:272; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:283; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:300; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:318; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:330" data-code="res.status(400).json({error: err}) res.status(400).json({error: err}) res.status(400).json({error: err}); res.status(400).json({error: err}) res.status(400).json({error: err}); res.status(400).json({error: err}) res.status(400).json({error: err}) res.status(400).json({error: err}); res.status(400).json({error: err}) res.status(400).json({error: err}) res.status(400).json({error: err}) res.status(400).json({error: err}); res.status(400).json({error: err}) res.status(400).json({error: nerr}); res.status(400).json({error: err}); res.status(400).json({error: err}) res.status(400).json({error: err}) res.status(400).json({error: err}) res.status(400).json({error: error}) res.status(400).json({error: error})" data-confidence="medium" data-confidence-rank="1" data-next="Confirm the response uses a fixed message" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="09e00a3b-390d-48e9-aca6-f8a086b8ae1d" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Error handling</td>
+      <td class="subclass">Information disclosure</td>
+      <td>Error detail sent to the client</td>
+      <td class="problem">The response includes an error object, message, or stack. The client learns internal paths, queries, or library details.</td>
+      <td class="where">Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:37; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:71; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:78; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:97; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:105; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:122; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:136; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:145; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:163; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:171; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:189; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:198; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:216; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:225; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:249; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:272; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:283; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:300; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:318; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:330</td>
+      <td class="code"><code>res.status(400).json({error: err})
+
+res.status(400).json({error: err})
+
+res.status(400).json({error: err});
+
+res.status(400).json({error: err})
+
+res.status(400).json({error: err});
+
+res.status(400).json({error: err})
+
+res.status(400).json({error: err})
+
+res.status(400).json({error: err});
+
+res.status(400).json({error: err})
+
+res.status(400).json({error: err})
+
+res.status(400).json({error: err})
+
+res.status(400).json({error: err});
+
+res.status(400).json({error: err})
+
+res.status(400).json({error: nerr});
+
+res.status(400).json({error: err});
+
+res.status(400).json({error: err})
+
+res.status(400).json({error: err})
+
+res.status(400).json({error: err})
+
+res.status(400).json({error: error})
+
+res.status(400).json({error: error})</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm the response uses a fixed message</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> err, err.stack, or err.message is passed to the response. It looks for res.send, res.json, or res.end.</p><p><span class="k">Clears when.</span> fixed error message is present.</p><p><span class="k">Cannot see.</span> PII classes are not inferred without a data inventory.</p><p>Clone likeness: 0.203. Patched twin: 0.25.</p><p class="muted">CWE-209 · js.error.client · waiver id 00824873f4ac4a48</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Error handling" data-subclass="Information disclosure" data-finding="Error detail sent to the client" data-problem="The response includes an error object, message, or stack. The client learns internal paths, queries, or library details." data-where="Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:41" data-code="res.status(400).json({error: &quot;Amount exceeds allowed amount&quot;});" data-confidence="medium" data-confidence-rank="1" data-next="Confirm the response uses a fixed message" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="3d3b2877-31bd-4f5f-84ef-7d06d4488955" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Error handling</td>
+      <td class="subclass">Information disclosure</td>
+      <td>Error detail sent to the client</td>
+      <td class="problem">The response includes an error object, message, or stack. The client learns internal paths, queries, or library details.</td>
+      <td class="where">Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:41</td>
+      <td class="code"><code>res.status(400).json({error: &quot;Amount exceeds allowed amount&quot;});</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm the response uses a fixed message</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> err, err.stack, or err.message is passed to the response. It looks for res.send, res.json, or res.end.</p><p><span class="k">Clears when.</span> fixed error message is present.</p><p><span class="k">Cannot see.</span> PII classes are not inferred without a data inventory.</p><p>Clone likeness: 0.203. Patched twin: 0.25.</p><p class="muted">CWE-209 · js.error.client · waiver id 10a87bf8547f718e</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Error handling" data-subclass="Information disclosure" data-finding="Error detail sent to the client" data-problem="The response includes an error object, message, or stack. The client learns internal paths, queries, or library details." data-where="Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:46; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:75; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:102; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:167" data-code="res.status(403).json({error: &quot;not authorized&quot;}) res.status(403).json({error: &quot;not authorized&quot;}) res.status(403).json({error: &quot;not authorized&quot;}) res.status(403).json({error: &quot;not authorized&quot;})" data-confidence="medium" data-confidence-rank="1" data-next="Confirm the response uses a fixed message" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="f0e89fa2-e06a-4932-90d8-29c7ab4f85d1" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Error handling</td>
+      <td class="subclass">Information disclosure</td>
+      <td>Error detail sent to the client</td>
+      <td class="problem">The response includes an error object, message, or stack. The client learns internal paths, queries, or library details.</td>
+      <td class="where">Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:46; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:75; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:102; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:167</td>
+      <td class="code"><code>res.status(403).json({error: &quot;not authorized&quot;})
+
+res.status(403).json({error: &quot;not authorized&quot;})
+
+res.status(403).json({error: &quot;not authorized&quot;})
+
+res.status(403).json({error: &quot;not authorized&quot;})</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm the response uses a fixed message</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> err, err.stack, or err.message is passed to the response. It looks for res.send, res.json, or res.end.</p><p><span class="k">Clears when.</span> fixed error message is present.</p><p><span class="k">Cannot see.</span> PII classes are not inferred without a data inventory.</p><p>Clone likeness: 0.203. Patched twin: 0.25.</p><p class="muted">CWE-209 · js.error.client · waiver id 712ff7c36a7e206c</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Sensitive data" data-subclass="Sensitive data in response" data-finding="Full record sent in a JSON response" data-problem="The query does not limit columns, and the result is sent as JSON. A user record includes the password hash." data-where="Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:88" data-code="Expense .find({user: validObject.user})" data-confidence="medium" data-confidence-rank="1" data-next="Confirm the response lists only the fields the client needs" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="34fd1a51-8f98-45e5-b931-d9354e3b50b5" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Sensitive data</td>
+      <td class="subclass">Sensitive data in response</td>
+      <td>Full record sent in a JSON response</td>
+      <td class="problem">The query does not limit columns, and the result is sent as JSON. A user record includes the password hash.</td>
+      <td class="where">Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:88</td>
+      <td class="code"><code>Expense
+                .find({user: validObject.user})</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm the response lists only the fields the client needs</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> A model query with no attributes list is sent with res.json or res.send in the same continuation. It looks for findAll, find, findOne, or res.json.</p><p><span class="k">Clears when.</span> attributes list is present.</p><p><span class="k">Cannot see.</span> A render call is not a JSON response. The column names are not read from the model.</p><p>Clone likeness: 0.203. Patched twin: 0.25.</p><p class="muted">CWE-200 · js.sensitive.response · waiver id d2cf10965c8dabef</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Error handling" data-subclass="Information disclosure" data-finding="Error detail sent to the client" data-problem="The response includes an error object, message, or stack. The client learns internal paths, queries, or library details." data-where="Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:141; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:194; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:221; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:336" data-code="res.status(403).json({error: &quot;unauthorized&quot;}); res.status(403).json({error: &quot;unauthorized&quot;}); res.status(403).json({error: &quot;unauthorized&quot;}); res.status(403).json({error: &quot;unauthorized&quot;})" data-confidence="medium" data-confidence-rank="1" data-next="Confirm the response uses a fixed message" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="25e29a14-45e1-4be5-b8bb-0c679a0e9508" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Error handling</td>
+      <td class="subclass">Information disclosure</td>
+      <td>Error detail sent to the client</td>
+      <td class="problem">The response includes an error object, message, or stack. The client learns internal paths, queries, or library details.</td>
+      <td class="where">Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:141; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:194; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:221; Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:336</td>
+      <td class="code"><code>res.status(403).json({error: &quot;unauthorized&quot;});
+
+res.status(403).json({error: &quot;unauthorized&quot;});
+
+res.status(403).json({error: &quot;unauthorized&quot;});
+
+res.status(403).json({error: &quot;unauthorized&quot;})</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm the response uses a fixed message</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> err, err.stack, or err.message is passed to the response. It looks for res.send, res.json, or res.end.</p><p><span class="k">Clears when.</span> fixed error message is present.</p><p><span class="k">Cannot see.</span> PII classes are not inferred without a data inventory.</p><p>Clone likeness: 0.203. Patched twin: 0.25.</p><p class="muted">CWE-209 · js.error.client · waiver id 46b856b5d03ce2bc</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Sensitive data" data-subclass="Sensitive data in response" data-finding="Full record sent in a JSON response" data-problem="The query does not limit columns, and the result is sent as JSON. A user record includes the password hash." data-where="Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:208" data-code="Expense .findOne({_id: expObj})" data-confidence="medium" data-confidence-rank="1" data-next="Confirm the response lists only the fields the client needs" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="56932d1c-d43a-4774-ac42-61e09df3e4ca" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Sensitive data</td>
+      <td class="subclass">Sensitive data in response</td>
+      <td>Full record sent in a JSON response</td>
+      <td class="problem">The query does not limit columns, and the result is sent as JSON. A user record includes the password hash.</td>
+      <td class="where">Cut-The-Funds-NodeJS-master/controllers/expense.controller.js:208</td>
+      <td class="code"><code>Expense
+                .findOne({_id: expObj})</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm the response lists only the fields the client needs</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> A model query with no attributes list is sent with res.json or res.send in the same continuation. It looks for findAll, find, findOne, or res.json.</p><p><span class="k">Clears when.</span> attributes list is present.</p><p><span class="k">Cannot see.</span> A render call is not a JSON response. The column names are not read from the model.</p><p>Clone likeness: 0.203. Patched twin: 0.25.</p><p class="muted">CWE-200 · js.sensitive.response · waiver id fab599afdcd7a141</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Injection" data-subclass="Log injection" data-finding="Log injection" data-problem="Request data is written into a log line. A newline in that value can forge later log entries." data-where="Cut-The-Funds-NodeJS-master/controllers/project.controller.js:30; Cut-The-Funds-NodeJS-master/controllers/project.controller.js:52; Cut-The-Funds-NodeJS-master/controllers/project.controller.js:79" data-code="log.info(req); log.info(req); log.info(req);" data-confidence="medium" data-confidence-rank="1" data-next="Confirm control characters are stripped before this write" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="e78811a9-94b7-4796-b722-75da2981f3bf" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Injection</td>
+      <td class="subclass">Log injection</td>
+      <td>Log injection</td>
+      <td class="problem">Request data is written into a log line. A newline in that value can forge later log entries.</td>
+      <td class="where">Cut-The-Funds-NodeJS-master/controllers/project.controller.js:30; Cut-The-Funds-NodeJS-master/controllers/project.controller.js:52; Cut-The-Funds-NodeJS-master/controllers/project.controller.js:79</td>
+      <td class="code"><code>log.info(req);
+
+log.info(req);
+
+log.info(req);</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm control characters are stripped before this write</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> Request data reaches a header, mail, log, or CSV call. It looks for setHeader, sendMail, log, or writeCsv.</p><p><span class="k">Clears when.</span> stripCrlf, structured log, or CSV escape is present.</p><p><span class="k">Cannot see.</span> Passwords, tokens, and req.body are reported by the sensitive-log rule instead.</p><p>Clone likeness: 0.25. Patched twin: 0.234.</p><p class="muted">CWE-93, CWE-117 · js.control.char · waiver id 05b43c530c7b0396</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Error handling" data-subclass="Information disclosure" data-finding="Error detail sent to the client" data-problem="The response includes an error object, message, or stack. The client learns internal paths, queries, or library details." data-where="Cut-The-Funds-NodeJS-master/controllers/project.controller.js:34; Cut-The-Funds-NodeJS-master/controllers/project.controller.js:56; Cut-The-Funds-NodeJS-master/controllers/project.controller.js:64; Cut-The-Funds-NodeJS-master/controllers/project.controller.js:84; Cut-The-Funds-NodeJS-master/controllers/project.controller.js:91; Cut-The-Funds-NodeJS-master/controllers/project.controller.js:114; Cut-The-Funds-NodeJS-master/controllers/project.controller.js:121; Cut-The-Funds-NodeJS-master/controllers/project.controller.js:157" data-code="res.status(400).json({error: err}) res.status(400).json({error: err}) res.status(400).json({error: err}) res.status(400).json({error: err}) res.status(400).json({error: err}) res.status(400).json({error: err}) res.status(400).json({error: err}) res.status(400).json({error: err});" data-confidence="medium" data-confidence-rank="1" data-next="Confirm the response uses a fixed message" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="bbf255ae-d04c-445f-832a-653179511c5b" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Error handling</td>
+      <td class="subclass">Information disclosure</td>
+      <td>Error detail sent to the client</td>
+      <td class="problem">The response includes an error object, message, or stack. The client learns internal paths, queries, or library details.</td>
+      <td class="where">Cut-The-Funds-NodeJS-master/controllers/project.controller.js:34; Cut-The-Funds-NodeJS-master/controllers/project.controller.js:56; Cut-The-Funds-NodeJS-master/controllers/project.controller.js:64; Cut-The-Funds-NodeJS-master/controllers/project.controller.js:84; Cut-The-Funds-NodeJS-master/controllers/project.controller.js:91; Cut-The-Funds-NodeJS-master/controllers/project.controller.js:114; Cut-The-Funds-NodeJS-master/controllers/project.controller.js:121; Cut-The-Funds-NodeJS-master/controllers/project.controller.js:157</td>
+      <td class="code"><code>res.status(400).json({error: err})
+
+res.status(400).json({error: err})
+
+res.status(400).json({error: err})
+
+res.status(400).json({error: err})
+
+res.status(400).json({error: err})
+
+res.status(400).json({error: err})
+
+res.status(400).json({error: err})
+
+res.status(400).json({error: err});</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm the response uses a fixed message</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> err, err.stack, or err.message is passed to the response. It looks for res.send, res.json, or res.end.</p><p><span class="k">Clears when.</span> fixed error message is present.</p><p><span class="k">Cannot see.</span> PII classes are not inferred without a data inventory.</p><p>Clone likeness: 0.25. Patched twin: 0.234.</p><p class="muted">CWE-209 · js.error.client · waiver id 61322e4c479ad602</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Error handling" data-subclass="Information disclosure" data-finding="Error detail sent to the client" data-problem="The response includes an error object, message, or stack. The client learns internal paths, queries, or library details." data-where="Cut-The-Funds-NodeJS-master/controllers/project.controller.js:38" data-code="res.status(403).json({error: &quot;Not Authorized&quot;})" data-confidence="medium" data-confidence-rank="1" data-next="Confirm the response uses a fixed message" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="4d1e9f5c-d88f-45aa-a0c6-4536256b24cb" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Error handling</td>
+      <td class="subclass">Information disclosure</td>
+      <td>Error detail sent to the client</td>
+      <td class="problem">The response includes an error object, message, or stack. The client learns internal paths, queries, or library details.</td>
+      <td class="where">Cut-The-Funds-NodeJS-master/controllers/project.controller.js:38</td>
+      <td class="code"><code>res.status(403).json({error: &quot;Not Authorized&quot;})</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm the response uses a fixed message</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> err, err.stack, or err.message is passed to the response. It looks for res.send, res.json, or res.end.</p><p><span class="k">Clears when.</span> fixed error message is present.</p><p><span class="k">Cannot see.</span> PII classes are not inferred without a data inventory.</p><p>Clone likeness: 0.25. Patched twin: 0.234.</p><p class="muted">CWE-209 · js.error.client · waiver id c57e212fae211614</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Error handling" data-subclass="Information disclosure" data-finding="Error detail sent to the client" data-problem="The response includes an error object, message, or stack. The client learns internal paths, queries, or library details." data-where="Cut-The-Funds-NodeJS-master/controllers/project.controller.js:61; Cut-The-Funds-NodeJS-master/controllers/project.controller.js:88; Cut-The-Funds-NodeJS-master/controllers/project.controller.js:117" data-code="res.status(403).json({error: &quot;not authorized&quot;}) res.status(403).json({error: &quot;not authorized&quot;}) res.status(403).json({error: &quot;not authorized&quot;})" data-confidence="medium" data-confidence-rank="1" data-next="Confirm the response uses a fixed message" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="a93b7ea0-483b-4c6f-b0a5-6c2ce8000164" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Error handling</td>
+      <td class="subclass">Information disclosure</td>
+      <td>Error detail sent to the client</td>
+      <td class="problem">The response includes an error object, message, or stack. The client learns internal paths, queries, or library details.</td>
+      <td class="where">Cut-The-Funds-NodeJS-master/controllers/project.controller.js:61; Cut-The-Funds-NodeJS-master/controllers/project.controller.js:88; Cut-The-Funds-NodeJS-master/controllers/project.controller.js:117</td>
+      <td class="code"><code>res.status(403).json({error: &quot;not authorized&quot;})
+
+res.status(403).json({error: &quot;not authorized&quot;})
+
+res.status(403).json({error: &quot;not authorized&quot;})</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm the response uses a fixed message</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> err, err.stack, or err.message is passed to the response. It looks for res.send, res.json, or res.end.</p><p><span class="k">Clears when.</span> fixed error message is present.</p><p><span class="k">Cannot see.</span> PII classes are not inferred without a data inventory.</p><p>Clone likeness: 0.25. Patched twin: 0.234.</p><p class="muted">CWE-209 · js.error.client · waiver id 595f51e963341230</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Error handling" data-subclass="Information disclosure" data-finding="Error detail sent to the client" data-problem="The response includes an error object, message, or stack. The client learns internal paths, queries, or library details." data-where="Cut-The-Funds-NodeJS-master/controllers/project.controller.js:136; Cut-The-Funds-NodeJS-master/controllers/project.controller.js:145" data-code="res.status(500).json(error); res.status(500).send(err);" data-confidence="medium" data-confidence-rank="1" data-next="Confirm the response uses a fixed message" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="116fdff8-9726-4b4d-934d-78db1c42b18a" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Error handling</td>
+      <td class="subclass">Information disclosure</td>
+      <td>Error detail sent to the client</td>
+      <td class="problem">The response includes an error object, message, or stack. The client learns internal paths, queries, or library details.</td>
+      <td class="where">Cut-The-Funds-NodeJS-master/controllers/project.controller.js:136; Cut-The-Funds-NodeJS-master/controllers/project.controller.js:145</td>
+      <td class="code"><code>res.status(500).json(error);
+
+res.status(500).send(err);</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm the response uses a fixed message</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> err, err.stack, or err.message is passed to the response. It looks for res.send, res.json, or res.end.</p><p><span class="k">Clears when.</span> fixed error message is present.</p><p><span class="k">Cannot see.</span> PII classes are not inferred without a data inventory.</p><p>Clone likeness: 0.25. Patched twin: 0.234.</p><p class="muted">CWE-209 · js.error.client · waiver id 5975667069977cab</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Error handling" data-subclass="Information disclosure" data-finding="Error detail sent to the client" data-problem="The response includes an error object, message, or stack. The client learns internal paths, queries, or library details." data-where="Cut-The-Funds-NodeJS-master/controllers/project.controller.js:142" data-code="res.status(403).json({error: &quot;unauthorized&quot;})" data-confidence="medium" data-confidence-rank="1" data-next="Confirm the response uses a fixed message" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="f6a8cd33-45e1-41d4-b7d1-818b0ac004a3" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Error handling</td>
+      <td class="subclass">Information disclosure</td>
+      <td>Error detail sent to the client</td>
+      <td class="problem">The response includes an error object, message, or stack. The client learns internal paths, queries, or library details.</td>
+      <td class="where">Cut-The-Funds-NodeJS-master/controllers/project.controller.js:142</td>
+      <td class="code"><code>res.status(403).json({error: &quot;unauthorized&quot;})</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm the response uses a fixed message</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> err, err.stack, or err.message is passed to the response. It looks for res.send, res.json, or res.end.</p><p><span class="k">Clears when.</span> fixed error message is present.</p><p><span class="k">Cannot see.</span> PII classes are not inferred without a data inventory.</p><p>Clone likeness: 0.25. Patched twin: 0.234.</p><p class="muted">CWE-209 · js.error.client · waiver id 8076766556a55d27</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Sensitive data" data-subclass="Sensitive data in response" data-finding="Full record sent in a JSON response" data-problem="The query does not limit columns, and the result is sent as JSON. A user record includes the password hash." data-where="Cut-The-Funds-NodeJS-master/controllers/user.controller.js:15" data-code="User .findOne({email: email, password: hashpass})" data-confidence="medium" data-confidence-rank="1" data-next="Confirm the response lists only the fields the client needs" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="aa2d9aad-fcef-4f15-81f5-7bda3f2759ba" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Sensitive data</td>
+      <td class="subclass">Sensitive data in response</td>
+      <td>Full record sent in a JSON response</td>
+      <td class="problem">The query does not limit columns, and the result is sent as JSON. A user record includes the password hash.</td>
+      <td class="where">Cut-The-Funds-NodeJS-master/controllers/user.controller.js:15</td>
+      <td class="code"><code>User
+        .findOne({email: email, password: hashpass})</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm the response lists only the fields the client needs</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> A model query with no attributes list is sent with res.json or res.send in the same continuation. It looks for findAll, find, findOne, or res.json.</p><p><span class="k">Clears when.</span> attributes list is present.</p><p><span class="k">Cannot see.</span> A render call is not a JSON response. The column names are not read from the model.</p><p>Clone likeness: 0.188. Patched twin: 0.188.</p><p class="muted">CWE-200 · js.sensitive.response · waiver id 91ff732f7e2f3b31</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Injection" data-subclass="Log injection" data-finding="Log injection" data-problem="Request data is written into a log line. A newline in that value can forge later log entries." data-where="Cut-The-Funds-NodeJS-master/controllers/user.controller.js:21; Cut-The-Funds-NodeJS-master/controllers/user.controller.js:43; Cut-The-Funds-NodeJS-master/controllers/user.controller.js:67; Cut-The-Funds-NodeJS-master/controllers/user.controller.js:93; Cut-The-Funds-NodeJS-master/controllers/user.controller.js:119" data-code="log.info(req) log.info(req) log.info(req) log.info(req) log.info(req)" data-confidence="medium" data-confidence-rank="1" data-next="Confirm control characters are stripped before this write" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="37fe1ff0-da11-491c-9230-ebe486b4f192" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Injection</td>
+      <td class="subclass">Log injection</td>
+      <td>Log injection</td>
+      <td class="problem">Request data is written into a log line. A newline in that value can forge later log entries.</td>
+      <td class="where">Cut-The-Funds-NodeJS-master/controllers/user.controller.js:21; Cut-The-Funds-NodeJS-master/controllers/user.controller.js:43; Cut-The-Funds-NodeJS-master/controllers/user.controller.js:67; Cut-The-Funds-NodeJS-master/controllers/user.controller.js:93; Cut-The-Funds-NodeJS-master/controllers/user.controller.js:119</td>
+      <td class="code"><code>log.info(req)
+
+log.info(req)
+
+log.info(req)
+
+log.info(req)
+
+log.info(req)</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm control characters are stripped before this write</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> Request data reaches a header, mail, log, or CSV call. It looks for setHeader, sendMail, log, or writeCsv.</p><p><span class="k">Clears when.</span> stripCrlf, structured log, or CSV escape is present.</p><p><span class="k">Cannot see.</span> Passwords, tokens, and req.body are reported by the sensitive-log rule instead.</p><p>Clone likeness: 0.188. Patched twin: 0.188.</p><p class="muted">CWE-93, CWE-117 · js.control.char · waiver id b641ad44d369950b</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Error handling" data-subclass="Information disclosure" data-finding="Error detail sent to the client" data-problem="The response includes an error object, message, or stack. The client learns internal paths, queries, or library details." data-where="Cut-The-Funds-NodeJS-master/controllers/user.controller.js:47; Cut-The-Funds-NodeJS-master/controllers/user.controller.js:71; Cut-The-Funds-NodeJS-master/controllers/user.controller.js:97; Cut-The-Funds-NodeJS-master/controllers/user.controller.js:123" data-code="res.status(400).json({error: err}) res.status(400).json({error: err}); res.status(400).json({error: err}); res.status(400).json({error: err});" data-confidence="medium" data-confidence-rank="1" data-next="Confirm the response uses a fixed message" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="c1c9e1a8-1bfd-402f-8f77-4e630dff0bdf" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Error handling</td>
+      <td class="subclass">Information disclosure</td>
+      <td>Error detail sent to the client</td>
+      <td class="problem">The response includes an error object, message, or stack. The client learns internal paths, queries, or library details.</td>
+      <td class="where">Cut-The-Funds-NodeJS-master/controllers/user.controller.js:47; Cut-The-Funds-NodeJS-master/controllers/user.controller.js:71; Cut-The-Funds-NodeJS-master/controllers/user.controller.js:97; Cut-The-Funds-NodeJS-master/controllers/user.controller.js:123</td>
+      <td class="code"><code>res.status(400).json({error: err})
+
+res.status(400).json({error: err});
+
+res.status(400).json({error: err});
+
+res.status(400).json({error: err});</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm the response uses a fixed message</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> err, err.stack, or err.message is passed to the response. It looks for res.send, res.json, or res.end.</p><p><span class="k">Clears when.</span> fixed error message is present.</p><p><span class="k">Cannot see.</span> PII classes are not inferred without a data inventory.</p><p>Clone likeness: 0.188. Patched twin: 0.188.</p><p class="muted">CWE-209 · js.error.client · waiver id 28f8096ee7474936</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Error handling" data-subclass="Information disclosure" data-finding="Error detail sent to the client" data-problem="The response includes an error object, message, or stack. The client learns internal paths, queries, or library details." data-where="Cut-The-Funds-NodeJS-master/controllers/user.controller.js:51" data-code="res.status(400).json({error: &quot;not happening bro&quot;})" data-confidence="medium" data-confidence-rank="1" data-next="Confirm the response uses a fixed message" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="63dc7c8f-c414-4bf9-86ec-d1bb43d6740d" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Error handling</td>
+      <td class="subclass">Information disclosure</td>
+      <td>Error detail sent to the client</td>
+      <td class="problem">The response includes an error object, message, or stack. The client learns internal paths, queries, or library details.</td>
+      <td class="where">Cut-The-Funds-NodeJS-master/controllers/user.controller.js:51</td>
+      <td class="code"><code>res.status(400).json({error: &quot;not happening bro&quot;})</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm the response uses a fixed message</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> err, err.stack, or err.message is passed to the response. It looks for res.send, res.json, or res.end.</p><p><span class="k">Clears when.</span> fixed error message is present.</p><p><span class="k">Cannot see.</span> PII classes are not inferred without a data inventory.</p><p>Clone likeness: 0.188. Patched twin: 0.188.</p><p class="muted">CWE-209 · js.error.client · waiver id bdc384067266195e</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Error handling" data-subclass="Information disclosure" data-finding="Error detail sent to the client" data-problem="The response includes an error object, message, or stack. The client learns internal paths, queries, or library details." data-where="Cut-The-Funds-NodeJS-master/controllers/user.controller.js:75; Cut-The-Funds-NodeJS-master/controllers/user.controller.js:101; Cut-The-Funds-NodeJS-master/controllers/user.controller.js:127" data-code="res.status(403).json({error: &quot;unauthorized&quot;}); res.status(403).json({error: &quot;unauthorized&quot;}); res.status(403).json({error: &quot;unauthorized&quot;});" data-confidence="medium" data-confidence-rank="1" data-next="Confirm the response uses a fixed message" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="bcbda8cd-86ea-471e-8d65-a1ea81c681e4" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Error handling</td>
+      <td class="subclass">Information disclosure</td>
+      <td>Error detail sent to the client</td>
+      <td class="problem">The response includes an error object, message, or stack. The client learns internal paths, queries, or library details.</td>
+      <td class="where">Cut-The-Funds-NodeJS-master/controllers/user.controller.js:75; Cut-The-Funds-NodeJS-master/controllers/user.controller.js:101; Cut-The-Funds-NodeJS-master/controllers/user.controller.js:127</td>
+      <td class="code"><code>res.status(403).json({error: &quot;unauthorized&quot;});
+
+res.status(403).json({error: &quot;unauthorized&quot;});
+
+res.status(403).json({error: &quot;unauthorized&quot;});</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm the response uses a fixed message</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> err, err.stack, or err.message is passed to the response. It looks for res.send, res.json, or res.end.</p><p><span class="k">Clears when.</span> fixed error message is present.</p><p><span class="k">Cannot see.</span> PII classes are not inferred without a data inventory.</p><p>Clone likeness: 0.188. Patched twin: 0.188.</p><p class="muted">CWE-209 · js.error.client · waiver id 57f8fe5e27bb69af</p></div>
+    </details></td></tr>
+    </tbody>
+      </table>
+      </div>
+    </section>
+    <section class="charts">
+      <div class="chart card">
+    <h2>Risk</h2>
+    <p class="note">Findings in each risk classification.</p>
+    <ul class="bars"><li>
+      <span class="bar-label">critical</span>
+      <span class="bar-track"><span class="bar-fill fill-critical" style="width:0%"></span></span>
+      <span class="bar-count">0</span>
+    </li><li>
+      <span class="bar-label">high</span>
+      <span class="bar-track"><span class="bar-fill fill-high" style="width:31.6%"></span></span>
+      <span class="bar-count">6</span>
+    </li><li>
+      <span class="bar-label">medium</span>
+      <span class="bar-track"><span class="bar-fill fill-medium" style="width:100%"></span></span>
+      <span class="bar-count">19</span>
+    </li><li>
+      <span class="bar-label">low</span>
+      <span class="bar-track"><span class="bar-fill fill-low" style="width:0%"></span></span>
+      <span class="bar-count">0</span>
+    </li></ul>
+  </div>
+      <div class="chart card">
+    <h2>Pull status</h2>
+    <p class="note">Findings that block, comment, or were cleared.</p>
+    <ul class="bars"><li>
+      <span class="bar-label">block</span>
+      <span class="bar-track"><span class="bar-fill fill-block" style="width:25%"></span></span>
+      <span class="bar-count">5</span>
+    </li><li>
+      <span class="bar-label">comment</span>
+      <span class="bar-track"><span class="bar-fill fill-comment" style="width:100%"></span></span>
+      <span class="bar-count">20</span>
+    </li><li>
+      <span class="bar-label">cleared</span>
+      <span class="bar-track"><span class="bar-fill fill-clear" style="width:0%"></span></span>
+      <span class="bar-count">0</span>
+    </li></ul>
+  </div>
+    </section>
+    <section class="history card" id="report-archive">
+    <h2>Report archive</h2>
+    <p class="note">Earlier versions of this report, with the date and time each one was saved.</p>
+    <ul><li><a href="archive/ID1-Cut-The-Funds-NodeJS-master/ID1-Cut-The-Funds-NodeJS-master_report_2026-10-24_05-41-39.html">ID1-Cut-The-Funds-NodeJS-master_report.html · 2026-10-24 05:41:39 UTC</a></li></ul>
+  </section>
+  </div>
+  <script>
+    (function () {
+      document.querySelectorAll(".risk-select").forEach((select) => {
+        select.dataset.saved = select.value;
+        select.addEventListener("change", () => {
+          const status = document.getElementById("risk-status");
+          const url = document.body.getAttribute("data-rating-url") || "";
+          if (!url) {
+            select.value = select.dataset.saved || select.value;
+            if (status) status.textContent = "This report has no save address.";
+            return;
+          }
+          if (status) status.textContent = "Saving rating…";
+          select.disabled = true;
+          const form = document.createElement("form");
+          form.method = "POST";
+          form.action = url;
+          const fields = {
+            finding_id: select.getAttribute("data-finding") || "",
+            risk_rating: select.value,
+            role: document.body.getAttribute("data-role") || "",
+            token: document.body.getAttribute("data-rating-token") || "",
+          };
+          for (const [name, value] of Object.entries(fields)) {
+            const input = document.createElement("input");
+            input.type = "hidden";
+            input.name = name;
+            input.value = value;
+            form.appendChild(input);
+          }
+          document.body.appendChild(form);
+          form.submit();
+        });
+      });
+      const table = document.getElementById("findings");
+      if (!table) return;
+      table.querySelectorAll(".similar-toggle").forEach((button) => {
+        button.addEventListener("click", () => {
+          const panel = button.closest("tbody") && button.closest("tbody").querySelector(".similar-row");
+          if (!panel) return;
+          const open = panel.hasAttribute("hidden");
+          panel.toggleAttribute("hidden", !open);
+          button.setAttribute("aria-expanded", open ? "true" : "false");
+        });
+      });
+      const headers = [...table.querySelectorAll("thead th[data-sort]")];
+      const count = document.getElementById("finding-count");
+      const clear = document.getElementById("clear-filters");
+      let sortKey = "risk";
+      let sortDir = 1;
+      function groups() {
+        return [...table.querySelectorAll("tbody.finding")];
+      }
+      function compare(left, right) {
+        const leftRank = left.getAttribute("data-" + sortKey + "-rank");
+        const rightRank = right.getAttribute("data-" + sortKey + "-rank");
+        if (leftRank !== null && rightRank !== null) return (Number(leftRank) - Number(rightRank)) * sortDir;
+        const leftText = left.getAttribute("data-" + sortKey) || "";
+        const rightText = right.getAttribute("data-" + sortKey) || "";
+        return leftText.localeCompare(rightText, undefined, { numeric: true, sensitivity: "base" }) * sortDir;
+      }
+      function apply() {
+        const filters = {};
+        table.querySelectorAll("[data-filter]").forEach((input) => {
+          filters[input.getAttribute("data-filter")] = input.value.trim().toLowerCase();
+        });
+        const rows = groups().sort(compare);
+        let shown = 0;
+        for (const row of rows) {
+          table.appendChild(row);
+          const hide = Object.entries(filters).some(([key, query]) => {
+            if (!query) return false;
+            return !(row.getAttribute("data-" + key) || "").toLowerCase().includes(query);
+          });
+          row.hidden = hide;
+          if (!hide) shown += 1;
+        }
+        if (count) {
+          const total = rows.length;
+          count.textContent = shown === total ? (total === 1 ? "1 finding" : total + " findings") : "Showing " + shown + " of " + total;
+        }
+        headers.forEach((headerCell) => {
+          const key = headerCell.getAttribute("data-sort");
+          headerCell.setAttribute("aria-sort", key === sortKey ? (sortDir === 1 ? "ascending" : "descending") : "none");
+        });
+      }
+      headers.forEach((headerCell) => {
+        const button = headerCell.querySelector("button");
+        if (!button) return;
+        button.addEventListener("click", () => {
+          const key = headerCell.getAttribute("data-sort");
+          if (sortKey === key) sortDir *= -1;
+          else {
+            sortKey = key;
+            sortDir = 1;
+          }
+          apply();
+        });
+      });
+      table.querySelectorAll("[data-filter]").forEach((input) => {
+        input.addEventListener("input", apply);
+        input.addEventListener("change", apply);
+      });
+      if (clear) {
+        clear.addEventListener("click", () => {
+          table.querySelectorAll("[data-filter]").forEach((input) => { input.value = ""; });
+          apply();
+        });
+      }
+      apply();
+    }());
+  </script>
+</body>
+</html>

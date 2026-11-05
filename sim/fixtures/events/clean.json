@@ -1,0 +1,11 @@
+{
+  "delivery_id": "evt-clean-1",
+  "repo_id": "repo-clean",
+  "repo_name": "clean-order",
+  "service_id": "svc-clean",
+  "service_name": "clean-order",
+  "owner_team_id": "team-checkout",
+  "data_class": "internal",
+  "commit_sha": "clean111",
+  "source_dir": "fixtures/repos/clean-order"
+}

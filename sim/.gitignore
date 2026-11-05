@@ -1,0 +1,9 @@
+node_modules/
+snapshots/
+corpus/promoted/
+
+# Generated scan output stays on this machine.
+# The saved reference reports are the exception.
+out/*
+!out/dashboard.html
+!out/ID*_report.html

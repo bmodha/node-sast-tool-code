@@ -1,0 +1,8 @@
+{
+  "name": "fixture",
+  "version": "0.0.0",
+  "private": true,
+  "dependencies": {
+    "mathjs": "3.10.1"
+  }
+}

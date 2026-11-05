@@ -1,0 +1,11 @@
+{
+  "delivery_id": "evt-triage-1",
+  "repo_id": "repo-triage",
+  "repo_name": "triage",
+  "service_id": "svc-triage",
+  "service_name": "triage",
+  "owner_team_id": "team-checkout",
+  "data_class": "internal",
+  "commit_sha": "triage111",
+  "source_dir": "fixtures/repos/triage"
+}

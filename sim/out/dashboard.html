@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Findings dashboard</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0d1117;
+      --card: #161b22;
+      --ink: #e6edf3;
+      --muted: #8b949e;
+      --line: #30363d;
+      --soft: #21262d;
+      --accent: #58a6ff;
+      --accent-soft: #1c2d41;
+      --panel: #0d1117;
+      --critical: #f85149;
+      --high: #db6d28;
+      --medium: #d29922;
+      --low: #388bfd;
+      --info: #6e7681;
+      --clear: #3fb950;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: "Segoe UI", system-ui, sans-serif;
+      margin: 0;
+      color: var(--ink);
+      background: var(--bg);
+      line-height: 1.45;
+    }
+    .page { max-width: 1440px; margin: 0 auto; padding: 1.4rem 1.25rem 2.5rem; }
+    h1 { font-size: 1.45rem; font-weight: 650; letter-spacing: -0.02em; margin: 0 0 0.9rem; }
+    h2 { font-size: 1.02rem; font-weight: 650; color: var(--ink); margin: 0 0 0.45rem; }
+    h2 .count { font-size: 0.82rem; font-weight: 500; color: var(--muted); margin-left: 0.35rem; }
+    a { color: var(--accent); }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 0.95rem 1.05rem 1.05rem;
+    }
+    .note { margin: 0 0 0.75rem; color: var(--muted); font-size: 0.86rem; }
+    .tools { margin: 0 0 0.65rem; }
+    .tools button, th button {
+      font: inherit;
+      color: var(--ink);
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 0.28rem 0.6rem;
+      cursor: pointer;
+    }
+    .tools button:hover, th button:hover { background: var(--accent-soft); }
+    th button { border: 0; background: none; border-radius: 6px; padding: 0; font-weight: 700; color: inherit; text-align: left; }
+    .wrap { overflow-x: auto; container-type: inline-size; }
+    table { border-collapse: collapse; width: 100%; background: var(--card); }
+    th, td { padding: 0.48rem 0.55rem; text-align: left; font-size: 0.86rem; vertical-align: top; border-bottom: 1px solid var(--soft); }
+    thead th { background: var(--soft); color: var(--muted); }
+    th[aria-sort="ascending"] button::after { content: " ↑"; }
+    th[aria-sort="descending"] button::after { content: " ↓"; }
+    .filters th { background: var(--card); }
+    .filters input, .filters select {
+      width: 100%;
+      box-sizing: border-box;
+      font: inherit;
+      font-size: 0.75rem;
+      padding: 0.22rem 0.3rem;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--panel);
+      color: var(--ink);
+    }
+    .muted { color: var(--muted); font-size: 0.8rem; }
+    .chip {
+      display: inline-block;
+      padding: 0.08rem 0.48rem;
+      border-radius: 999px;
+      font-weight: 650;
+      font-size: 0.78rem;
+      text-transform: capitalize;
+      letter-spacing: 0.01em;
+    }
+    .check { text-transform: none; }
+    .risk-critical, .status-block, .check-failure { background: #3d1214; color: #ff7b72; }
+    .risk-high { background: #3d220c; color: #f0883e; }
+    .risk-medium, .status-comment { background: #3d2e0a; color: #e3b341; }
+    .risk-low { background: #0d2847; color: #79c0ff; }
+    .status-clear, .check-success { background: #0f2d1a; color: #56d364; }
+    .risk-info { background: #21262d; color: #8b949e; }
+    .charts { margin-top: 0.9rem; display: grid; grid-template-columns: 1fr 1fr; gap: 0.9rem; }
+    .bars { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.55rem; }
+    .bars li { display: grid; grid-template-columns: 7.6rem 1fr 2rem; gap: 0.6rem; align-items: center; }
+    .bar-label { color: var(--muted); font-size: 0.88rem; }
+    .bar-track { height: 0.72rem; background: var(--soft); border-radius: 999px; overflow: hidden; }
+    .bar-fill { display: block; height: 100%; border-radius: 999px; min-width: 0; }
+    .bar-count { text-align: right; font-variant-numeric: tabular-nums; font-weight: 650; }
+    .fill-critical, .fill-block { background: var(--critical); }
+    .fill-high { background: var(--high); }
+    .fill-medium, .fill-comment { background: var(--medium); }
+    .fill-low { background: var(--low); }
+    .fill-clear { background: var(--clear); }
+    .fill-info { background: var(--info); }
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    @media (max-width: 860px) {
+      .charts { grid-template-columns: 1fr; }
+    }
+    .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.9rem; }
+    .stat-value { margin: 0; font-size: 1.55rem; font-weight: 650; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+    .stat-label { margin: 0.15rem 0 0; color: var(--muted); font-size: 0.82rem; }
+    .stat-failed { color: var(--critical); }
+    .reports { margin-top: 0.9rem; }
+    .reports table { min-width: 72rem; }
+    tr.report:hover td { background: var(--soft); }
+    tr.report[hidden] { display: none; }
+    .num { font-variant-numeric: tabular-nums; }
+    .sev { display: inline-flex; gap: 0.28rem; white-space: nowrap; }
+    .chip.zero { opacity: 0.4; }
+    .chart-wide { grid-column: 1 / -1; }
+    .charts .bars li { grid-template-columns: 7.6rem 1fr 3rem; }
+    .charts .wide-labels .bars li { grid-template-columns: 12.5rem 1fr 3rem; }
+    .charts .stacks li { grid-template-columns: minmax(10rem, 20rem) 1fr 3rem; }
+    .stacks .bar-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .stacks .bar-track { display: flex; }
+    .stack { display: flex; flex: 1 1 auto; height: 100%; min-width: 0; }
+    .stack .bar-fill { border-radius: 0; height: 100%; }
+    .legend { display: flex; flex-wrap: wrap; gap: 0.7rem 1rem; margin: 0.75rem 0 0; color: var(--muted); font-size: 0.8rem; align-items: center; }
+    .swatch { display: inline-block; width: 0.65rem; height: 0.65rem; border-radius: 2px; margin-right: 0.35rem; vertical-align: -0.08rem; }
+    .fill-accent { background: var(--accent); }
+    @media (max-width: 860px) {
+      .stats { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 560px) {
+      .stats { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <h1>Findings dashboard</h1>
+    <p class="note">Latest scan for each repository that has a current report. Archived copies are not listed.</p>
+    <section class="stats" aria-label="Summary">
+      <article class="card stat">
+    <p class="stat-value">11</p>
+    <p class="stat-label">Reports</p>
+  </article>
+      <article class="card stat">
+    <p class="stat-value stat-failed">6</p>
+    <p class="stat-label">Failed deployments</p>
+  </article>
+      <article class="card stat">
+    <p class="stat-value">322</p>
+    <p class="stat-label">Findings</p>
+  </article>
+      <article class="card stat">
+    <p class="stat-value">80</p>
+    <p class="stat-label">Blocking findings</p>
+  </article>
+    </section>
+    <section class="reports card">
+      <h2>Reports <span id="report-count" class="count"></span></h2>
+      <p class="tools"><button type="button" id="clear-filters">Clear filters</button></p>
+      <div class="wrap">
+        <table id="reports">
+          <thead>
+            <tr><th data-sort="repo" aria-sort="none"><button type="button" title="The repository this scan reviewed.">Repository</button></th><th data-sort="findings" aria-sort="none"><button type="button" title="How many findings this report contains.">Findings</button></th><th data-sort="severity" aria-sort="none"><button type="button" title="Critical, high, medium, low, and informational.">Severity</button></th><th data-sort="blocking" aria-sort="none"><button type="button" title="Findings whose pull status is block. This is the count that fails deployment.">Blocking</button></th><th data-sort="deployment" aria-sort="none"><button type="button" title="Failed means at least one finding blocks deployment. Passed means none do.">Deployment</button></th><th data-sort="class" aria-sort="none"><button type="button" title="How sensitive the service is. Restricted can turn a high finding into a block.">Data class</button></th><th data-sort="reviewer" aria-sort="none"><button type="button" title="The role that last wrote this report.">Reviewer</button></th><th data-sort="owner" aria-sort="none"><button type="button" title="The team accountable for the service.">Owner</button></th><th data-sort="scanned" aria-sort="none"><button type="button" title="When this report's latest scan finished, in UTC.">Scanned</button></th></tr>
+            <tr class="filters"><th><input data-filter="repo" aria-label="Filter Repository" placeholder="Filter"></th><th><input data-filter="findings" aria-label="Filter Findings" placeholder="Filter"></th><th><input data-filter="severity" aria-label="Filter Severity" placeholder="Filter"></th><th><input data-filter="blocking" aria-label="Filter Blocking" placeholder="Filter"></th><th><select data-filter="deployment" aria-label="Filter Deployment"><option value="">All</option><option value="failed">Failed</option><option value="passed">Passed</option></select></th><th><select data-filter="class" aria-label="Filter Data class"><option value="">All</option><option value="restricted">restricted</option></select></th><th><select data-filter="reviewer" aria-label="Filter Reviewer"><option value="">All</option><option value="appsec">appsec</option></select></th><th><select data-filter="owner" aria-label="Filter Owner"><option value="">All</option><option value="local">local</option></select></th><th><input data-filter="scanned" aria-label="Filter Scanned" placeholder="Filter"></th></tr>
+          </thead>
+          <tbody>
+            <tr class="report" data-repo="ID8-vulnerable-node-master" data-findings="110" data-findings-rank="110" data-severity="0C 34H 50M 26L 0I" data-severity-rank="34502600" data-blocking="33" data-blocking-rank="33" data-deployment="failed" data-deployment-rank="0" data-class="restricted" data-reviewer="appsec" data-owner="local" data-scanned="2026-10-24 05:44:48 UTC">
+      <td><a href="ID8-vulnerable-node-master_report.html">ID8-vulnerable-node-master</a></td>
+      <td class="num">110</td>
+      <td><span class="sev"><span class="chip risk-critical zero">0C</span><span class="chip risk-high">34H</span><span class="chip risk-medium">50M</span><span class="chip risk-low">26L</span><span class="chip risk-info zero">0I</span></span></td>
+      <td class="num">33</td>
+      <td><span class="chip check check-failure">Failed</span></td>
+      <td>restricted</td>
+      <td>appsec</td>
+      <td>local</td>
+      <td>2026-10-24 05:44:48 UTC</td>
+    </tr><tr class="report" data-repo="ID9-vulnerable-rest-api-main" data-findings="51" data-findings-rank="51" data-severity="0C 18H 33M 0L 0I" data-severity-rank="18330000" data-blocking="18" data-blocking-rank="18" data-deployment="failed" data-deployment-rank="0" data-class="restricted" data-reviewer="appsec" data-owner="local" data-scanned="2026-10-24 05:45:06 UTC">
+      <td><a href="ID9-vulnerable-rest-api-main_report.html">ID9-vulnerable-rest-api-main</a></td>
+      <td class="num">51</td>
+      <td><span class="sev"><span class="chip risk-critical zero">0C</span><span class="chip risk-high">18H</span><span class="chip risk-medium">33M</span><span class="chip risk-low zero">0L</span><span class="chip risk-info zero">0I</span></span></td>
+      <td class="num">18</td>
+      <td><span class="chip check check-failure">Failed</span></td>
+      <td>restricted</td>
+      <td>appsec</td>
+      <td>local</td>
+      <td>2026-10-24 05:45:06 UTC</td>
+    </tr><tr class="report" data-repo="ID2-dvna-master" data-findings="55" data-findings-rank="55" data-severity="0C 17H 38M 0L 0I" data-severity-rank="17380000" data-blocking="17" data-blocking-rank="17" data-deployment="failed" data-deployment-rank="0" data-class="restricted" data-reviewer="appsec" data-owner="local" data-scanned="2026-10-24 05:42:37 UTC">
+      <td><a href="ID2-dvna-master_report.html">ID2-dvna-master</a></td>
+      <td class="num">55</td>
+      <td><span class="sev"><span class="chip risk-critical zero">0C</span><span class="chip risk-high">17H</span><span class="chip risk-medium">38M</span><span class="chip risk-low zero">0L</span><span class="chip risk-info zero">0I</span></span></td>
+      <td class="num">17</td>
+      <td><span class="chip check check-failure">Failed</span></td>
+      <td>restricted</td>
+      <td>appsec</td>
+      <td>local</td>
+      <td>2026-10-24 05:42:37 UTC</td>
+    </tr><tr class="report" data-repo="ID1-Cut-The-Funds-NodeJS-master" data-findings="25" data-findings-rank="25" data-severity="0C 6H 19M 0L 0I" data-severity-rank="6190000" data-blocking="5" data-blocking-rank="5" data-deployment="failed" data-deployment-rank="0" data-class="restricted" data-reviewer="appsec" data-owner="local" data-scanned="2026-10-24 05:41:38 UTC">
+      <td><a href="ID1-Cut-The-Funds-NodeJS-master_report.html">ID1-Cut-The-Funds-NodeJS-master</a></td>
+      <td class="num">25</td>
+      <td><span class="sev"><span class="chip risk-critical zero">0C</span><span class="chip risk-high">6H</span><span class="chip risk-medium">19M</span><span class="chip risk-low zero">0L</span><span class="chip risk-info zero">0I</span></span></td>
+      <td class="num">5</td>
+      <td><span class="chip check check-failure">Failed</span></td>
+      <td>restricted</td>
+      <td>appsec</td>
+      <td>local</td>
+      <td>2026-10-24 05:41:38 UTC</td>
+    </tr><tr class="report" data-repo="ID3-nodejs-goof-main" data-findings="18" data-findings-rank="18" data-severity="0C 5H 13M 0L 0I" data-severity-rank="5130000" data-blocking="5" data-blocking-rank="5" data-deployment="failed" data-deployment-rank="0" data-class="restricted" data-reviewer="appsec" data-owner="local" data-scanned="2026-10-24 05:43:01 UTC">
+      <td><a href="ID3-nodejs-goof-main_report.html">ID3-nodejs-goof-main</a></td>
+      <td class="num">18</td>
+      <td><span class="sev"><span class="chip risk-critical zero">0C</span><span class="chip risk-high">5H</span><span class="chip risk-medium">13M</span><span class="chip risk-low zero">0L</span><span class="chip risk-info zero">0I</span></span></td>
+      <td class="num">5</td>
+      <td><span class="chip check check-failure">Failed</span></td>
+      <td>restricted</td>
+      <td>appsec</td>
+      <td>local</td>
+      <td>2026-10-24 05:43:01 UTC</td>
+    </tr><tr class="report" data-repo="ID6-Vulnerable-nodejs-master" data-findings="13" data-findings-rank="13" data-severity="0C 2H 11M 0L 0I" data-severity-rank="2110000" data-blocking="2" data-blocking-rank="2" data-deployment="failed" data-deployment-rank="0" data-class="restricted" data-reviewer="appsec" data-owner="local" data-scanned="2026-10-24 05:44:25 UTC">
+      <td><a href="ID6-Vulnerable-nodejs-master_report.html">ID6-Vulnerable-nodejs-master</a></td>
+      <td class="num">13</td>
+      <td><span class="sev"><span class="chip risk-critical zero">0C</span><span class="chip risk-high">2H</span><span class="chip risk-medium">11M</span><span class="chip risk-low zero">0L</span><span class="chip risk-info zero">0I</span></span></td>
+      <td class="num">2</td>
+      <td><span class="chip check check-failure">Failed</span></td>
+      <td>restricted</td>
+      <td>appsec</td>
+      <td>local</td>
+      <td>2026-10-24 05:44:25 UTC</td>
+    </tr><tr class="report" data-repo="ID4-vulnerable-app-master" data-findings="17" data-findings-rank="17" data-severity="0C 0H 17M 0L 0I" data-severity-rank="170000" data-blocking="0" data-blocking-rank="0" data-deployment="passed" data-deployment-rank="1" data-class="restricted" data-reviewer="appsec" data-owner="local" data-scanned="2026-10-24 05:43:39 UTC">
+      <td><a href="ID4-vulnerable-app-master_report.html">ID4-vulnerable-app-master</a></td>
+      <td class="num">17</td>
+      <td><span class="sev"><span class="chip risk-critical zero">0C</span><span class="chip risk-high zero">0H</span><span class="chip risk-medium">17M</span><span class="chip risk-low zero">0L</span><span class="chip risk-info zero">0I</span></span></td>
+      <td class="num">0</td>
+      <td><span class="chip check check-success">Passed</span></td>
+      <td>restricted</td>
+      <td>appsec</td>
+      <td>local</td>
+      <td>2026-10-24 05:43:39 UTC</td>
+    </tr><tr class="report" data-repo="ID5-vulnerable-node-app-master" data-findings="8" data-findings-rank="8" data-severity="0C 0H 8M 0L 0I" data-severity-rank="80000" data-blocking="0" data-blocking-rank="0" data-deployment="passed" data-deployment-rank="1" data-class="restricted" data-reviewer="appsec" data-owner="local" data-scanned="2026-10-24 05:44:06 UTC">
+      <td><a href="ID5-vulnerable-node-app-master_report.html">ID5-vulnerable-node-app-master</a></td>
+      <td class="num">8</td>
+      <td><span class="sev"><span class="chip risk-critical zero">0C</span><span class="chip risk-high zero">0H</span><span class="chip risk-medium">8M</span><span class="chip risk-low zero">0L</span><span class="chip risk-info zero">0I</span></span></td>
+      <td class="num">0</td>
+      <td><span class="chip check check-success">Passed</span></td>
+      <td>restricted</td>
+      <td>appsec</td>
+      <td>local</td>
+      <td>2026-10-24 05:44:06 UTC</td>
+    </tr><tr class="report" data-repo="ID7-vulnerable-nodejs-project-master" data-findings="7" data-findings-rank="7" data-severity="0C 0H 7M 0L 0I" data-severity-rank="70000" data-blocking="0" data-blocking-rank="0" data-deployment="passed" data-deployment-rank="1" data-class="restricted" data-reviewer="appsec" data-owner="local" data-scanned="2026-10-24 05:44:36 UTC">
+      <td><a href="ID7-vulnerable-nodejs-project-master_report.html">ID7-vulnerable-nodejs-project-master</a></td>
+      <td class="num">7</td>
+      <td><span class="sev"><span class="chip risk-critical zero">0C</span><span class="chip risk-high zero">0H</span><span class="chip risk-medium">7M</span><span class="chip risk-low zero">0L</span><span class="chip risk-info zero">0I</span></span></td>
+      <td class="num">0</td>
+      <td><span class="chip check check-success">Passed</span></td>
+      <td>restricted</td>
+      <td>appsec</td>
+      <td>local</td>
+      <td>2026-10-24 05:44:36 UTC</td>
+    </tr><tr class="report" data-repo="ID11-xvna-master" data-findings="0" data-findings-rank="0" data-severity="0C 0H 0M 0L 0I" data-severity-rank="0" data-blocking="0" data-blocking-rank="0" data-deployment="passed" data-deployment-rank="1" data-class="restricted" data-reviewer="appsec" data-owner="local" data-scanned="2026-10-24 05:45:50 UTC">
+      <td><a href="ID11-xvna-master_report.html">ID11-xvna-master</a></td>
+      <td class="num">0</td>
+      <td><span class="sev"><span class="chip risk-critical zero">0C</span><span class="chip risk-high zero">0H</span><span class="chip risk-medium zero">0M</span><span class="chip risk-low zero">0L</span><span class="chip risk-info zero">0I</span></span></td>
+      <td class="num">0</td>
+      <td><span class="chip check check-success">Passed</span></td>
+      <td>restricted</td>
+      <td>appsec</td>
+      <td>local</td>
+      <td>2026-10-24 05:45:50 UTC</td>
+    </tr><tr class="report" data-repo="ID12-vulnerable-app-master-2" data-findings="18" data-findings-rank="18" data-severity="0C 0H 18M 0L 0I" data-severity-rank="180000" data-blocking="0" data-blocking-rank="0" data-deployment="passed" data-deployment-rank="1" data-class="restricted" data-reviewer="appsec" data-owner="local" data-scanned="2026-10-24 05:46:00 UTC">
+      <td><a href="ID12-vulnerable-app-master-2_report.html">ID12-vulnerable-app-master-2</a></td>
+      <td class="num">18</td>
+      <td><span class="sev"><span class="chip risk-critical zero">0C</span><span class="chip risk-high zero">0H</span><span class="chip risk-medium">18M</span><span class="chip risk-low zero">0L</span><span class="chip risk-info zero">0I</span></span></td>
+      <td class="num">0</td>
+      <td><span class="chip check check-success">Passed</span></td>
+      <td>restricted</td>
+      <td>appsec</td>
+      <td>local</td>
+      <td>2026-10-24 05:46:00 UTC</td>
+    </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+    <section class="charts">
+      <div class="chart card">
+    <h2>Risk</h2>
+    <p class="note">Findings in each risk classification across the reports listed above.</p>
+    <ul class="bars"><li>
+      <span class="bar-label">critical</span>
+      <span class="bar-track"><span class="bar-fill fill-critical" style="width:0%"></span></span>
+      <span class="bar-count">0</span>
+    </li><li>
+      <span class="bar-label">high</span>
+      <span class="bar-track"><span class="bar-fill fill-high" style="width:38.3%"></span></span>
+      <span class="bar-count">82</span>
+    </li><li>
+      <span class="bar-label">medium</span>
+      <span class="bar-track"><span class="bar-fill fill-medium" style="width:100%"></span></span>
+      <span class="bar-count">214</span>
+    </li><li>
+      <span class="bar-label">low</span>
+      <span class="bar-track"><span class="bar-fill fill-low" style="width:12.1%"></span></span>
+      <span class="bar-count">26</span>
+    </li></ul>
+  </div>
+      <div class="chart card">
+    <h2>Deployment</h2>
+    <p class="note">Reports that failed or passed deployment.</p>
+    <ul class="bars"><li>
+      <span class="bar-label">Failed</span>
+      <span class="bar-track"><span class="bar-fill fill-block" style="width:100%"></span></span>
+      <span class="bar-count">6</span>
+    </li><li>
+      <span class="bar-label">Passed</span>
+      <span class="bar-track"><span class="bar-fill fill-clear" style="width:83.3%"></span></span>
+      <span class="bar-count">5</span>
+    </li></ul>
+  </div>
+      <div class="chart card chart-wide">
+    <h2>Severity by repository</h2>
+    <p class="note">Each bar is that report's findings, split by risk. Longer bars have more findings.</p>
+    <ul class="bars stacks"><li>
+      <span class="bar-label" title="ID8-vulnerable-node-master">ID8-vulnerable-node-master</span>
+      <span class="bar-track"><span class="stack"><span class="bar-fill fill-high" style="flex:0 0 30.9%"></span><span class="bar-fill fill-medium" style="flex:0 0 45.5%"></span><span class="bar-fill fill-low" style="flex:0 0 23.6%"></span></span></span>
+      <span class="bar-count">110</span>
+    </li><li>
+      <span class="bar-label" title="ID2-dvna-master">ID2-dvna-master</span>
+      <span class="bar-track"><span class="stack"><span class="bar-fill fill-high" style="flex:0 0 15.5%"></span><span class="bar-fill fill-medium" style="flex:0 0 34.5%"></span></span></span>
+      <span class="bar-count">55</span>
+    </li><li>
+      <span class="bar-label" title="ID9-vulnerable-rest-api-main">ID9-vulnerable-rest-api-main</span>
+      <span class="bar-track"><span class="stack"><span class="bar-fill fill-high" style="flex:0 0 16.4%"></span><span class="bar-fill fill-medium" style="flex:0 0 30%"></span></span></span>
+      <span class="bar-count">51</span>
+    </li><li>
+      <span class="bar-label" title="ID1-Cut-The-Funds-NodeJS-master">ID1-Cut-The-Funds-NodeJS-master</span>
+      <span class="bar-track"><span class="stack"><span class="bar-fill fill-high" style="flex:0 0 5.5%"></span><span class="bar-fill fill-medium" style="flex:0 0 17.3%"></span></span></span>
+      <span class="bar-count">25</span>
+    </li><li>
+      <span class="bar-label" title="ID3-nodejs-goof-main">ID3-nodejs-goof-main</span>
+      <span class="bar-track"><span class="stack"><span class="bar-fill fill-high" style="flex:0 0 4.5%"></span><span class="bar-fill fill-medium" style="flex:0 0 11.8%"></span></span></span>
+      <span class="bar-count">18</span>
+    </li><li>
+      <span class="bar-label" title="ID12-vulnerable-app-master-2">ID12-vulnerable-app-master-2</span>
+      <span class="bar-track"><span class="stack"><span class="bar-fill fill-medium" style="flex:0 0 16.4%"></span></span></span>
+      <span class="bar-count">18</span>
+    </li><li>
+      <span class="bar-label" title="ID4-vulnerable-app-master">ID4-vulnerable-app-master</span>
+      <span class="bar-track"><span class="stack"><span class="bar-fill fill-medium" style="flex:0 0 15.5%"></span></span></span>
+      <span class="bar-count">17</span>
+    </li><li>
+      <span class="bar-label" title="ID6-Vulnerable-nodejs-master">ID6-Vulnerable-nodejs-master</span>
+      <span class="bar-track"><span class="stack"><span class="bar-fill fill-high" style="flex:0 0 1.8%"></span><span class="bar-fill fill-medium" style="flex:0 0 10%"></span></span></span>
+      <span class="bar-count">13</span>
+    </li><li>
+      <span class="bar-label" title="ID5-vulnerable-node-app-master">ID5-vulnerable-node-app-master</span>
+      <span class="bar-track"><span class="stack"><span class="bar-fill fill-medium" style="flex:0 0 7.3%"></span></span></span>
+      <span class="bar-count">8</span>
+    </li><li>
+      <span class="bar-label" title="ID7-vulnerable-nodejs-project-master">ID7-vulnerable-nodejs-project-master</span>
+      <span class="bar-track"><span class="stack"><span class="bar-fill fill-medium" style="flex:0 0 6.4%"></span></span></span>
+      <span class="bar-count">7</span>
+    </li><li>
+      <span class="bar-label" title="ID11-xvna-master">ID11-xvna-master</span>
+      <span class="bar-track"><span class="stack"></span></span>
+      <span class="bar-count">0</span>
+    </li></ul><p class="legend"><span><span class="swatch fill-critical"></span>critical</span><span><span class="swatch fill-high"></span>high</span><span><span class="swatch fill-medium"></span>medium</span><span><span class="swatch fill-low"></span>low</span><span><span class="swatch fill-info"></span>informational</span></p>
+  </div>
+      <div class="chart card wide-labels">
+    <h2>Class</h2>
+    <p class="note">Findings in each vulnerability class.</p>
+    <ul class="bars"><li>
+      <span class="bar-label">Session</span>
+      <span class="bar-track"><span class="bar-fill fill-accent" style="width:100%"></span></span>
+      <span class="bar-count">68</span>
+    </li><li>
+      <span class="bar-label">Injection</span>
+      <span class="bar-track"><span class="bar-fill fill-accent" style="width:85.3%"></span></span>
+      <span class="bar-count">58</span>
+    </li><li>
+      <span class="bar-label">Error handling</span>
+      <span class="bar-track"><span class="bar-fill fill-accent" style="width:76.5%"></span></span>
+      <span class="bar-count">52</span>
+    </li><li>
+      <span class="bar-label">Request forgery</span>
+      <span class="bar-track"><span class="bar-fill fill-accent" style="width:51.5%"></span></span>
+      <span class="bar-count">35</span>
+    </li><li>
+      <span class="bar-label">Security configuration</span>
+      <span class="bar-track"><span class="bar-fill fill-accent" style="width:38.2%"></span></span>
+      <span class="bar-count">26</span>
+    </li><li>
+      <span class="bar-label">Sensitive data</span>
+      <span class="bar-track"><span class="bar-fill fill-accent" style="width:33.8%"></span></span>
+      <span class="bar-count">23</span>
+    </li><li>
+      <span class="bar-label">Cross-site scripting</span>
+      <span class="bar-track"><span class="bar-fill fill-accent" style="width:23.5%"></span></span>
+      <span class="bar-count">16</span>
+    </li><li>
+      <span class="bar-label">Path and file</span>
+      <span class="bar-track"><span class="bar-fill fill-accent" style="width:17.6%"></span></span>
+      <span class="bar-count">12</span>
+    </li><li>
+      <span class="bar-label">Cryptography</span>
+      <span class="bar-track"><span class="bar-fill fill-accent" style="width:11.8%"></span></span>
+      <span class="bar-count">8</span>
+    </li><li>
+      <span class="bar-label">Access control</span>
+      <span class="bar-track"><span class="bar-fill fill-accent" style="width:8.8%"></span></span>
+      <span class="bar-count">6</span>
+    </li><li>
+      <span class="bar-label">Resource consumption</span>
+      <span class="bar-track"><span class="bar-fill fill-accent" style="width:8.8%"></span></span>
+      <span class="bar-count">6</span>
+    </li><li>
+      <span class="bar-label">Authentication</span>
+      <span class="bar-track"><span class="bar-fill fill-accent" style="width:5.9%"></span></span>
+      <span class="bar-count">4</span>
+    </li><li>
+      <span class="bar-label">Deserialization</span>
+      <span class="bar-track"><span class="bar-fill fill-accent" style="width:5.9%"></span></span>
+      <span class="bar-count">4</span>
+    </li><li>
+      <span class="bar-label">Secrets</span>
+      <span class="bar-track"><span class="bar-fill fill-accent" style="width:4.4%"></span></span>
+      <span class="bar-count">3</span>
+    </li><li>
+      <span class="bar-label">Supply chain</span>
+      <span class="bar-track"><span class="bar-fill fill-accent" style="width:1.5%"></span></span>
+      <span class="bar-count">1</span>
+    </li></ul>
+  </div>
+      <div class="chart card">
+    <h2>Pull status</h2>
+    <p class="note">Findings that block, comment, or were cleared.</p>
+    <ul class="bars"><li>
+      <span class="bar-label">block</span>
+      <span class="bar-track"><span class="bar-fill fill-block" style="width:33.1%"></span></span>
+      <span class="bar-count">80</span>
+    </li><li>
+      <span class="bar-label">comment</span>
+      <span class="bar-track"><span class="bar-fill fill-comment" style="width:100%"></span></span>
+      <span class="bar-count">242</span>
+    </li><li>
+      <span class="bar-label">cleared</span>
+      <span class="bar-track"><span class="bar-fill fill-clear" style="width:0%"></span></span>
+      <span class="bar-count">0</span>
+    </li></ul>
+  </div>
+    </section>
+  </div>
+  <script>
+    (function () {
+      const table = document.getElementById("reports");
+      if (!table) return;
+      const headers = [...table.querySelectorAll("thead th[data-sort]")];
+      const count = document.getElementById("report-count");
+      const clear = document.getElementById("clear-filters");
+      let sortKey = "";
+      let sortDir = 1;
+      function groups() {
+        return [...table.querySelectorAll("tr.report")];
+      }
+      function compare(left, right) {
+        if (!sortKey) {
+          const deploy = Number(left.getAttribute("data-deployment-rank")) - Number(right.getAttribute("data-deployment-rank"));
+          if (deploy) return deploy;
+          const block = Number(right.getAttribute("data-blocking-rank")) - Number(left.getAttribute("data-blocking-rank"));
+          if (block) return block;
+          return (left.getAttribute("data-repo") || "").localeCompare(right.getAttribute("data-repo") || "", undefined, { numeric: true, sensitivity: "base" });
+        }
+        const leftRank = left.getAttribute("data-" + sortKey + "-rank");
+        const rightRank = right.getAttribute("data-" + sortKey + "-rank");
+        if (leftRank !== null && rightRank !== null) return (Number(leftRank) - Number(rightRank)) * sortDir;
+        const leftText = left.getAttribute("data-" + sortKey) || "";
+        const rightText = right.getAttribute("data-" + sortKey) || "";
+        return leftText.localeCompare(rightText, undefined, { numeric: true, sensitivity: "base" }) * sortDir;
+      }
+      function apply() {
+        const filters = {};
+        table.querySelectorAll("[data-filter]").forEach((input) => {
+          filters[input.getAttribute("data-filter")] = input.value.trim().toLowerCase();
+        });
+        const listed = groups().sort(compare);
+        let shown = 0;
+        const body = table.querySelector("tbody");
+        for (const row of listed) {
+          body.appendChild(row);
+          const hide = Object.entries(filters).some(([key, query]) => {
+            if (!query) return false;
+            return !(row.getAttribute("data-" + key) || "").toLowerCase().includes(query);
+          });
+          row.hidden = hide;
+          if (!hide) shown += 1;
+        }
+        if (count) {
+          const total = listed.length;
+          const noun = total === 1 ? "report" : "reports";
+          count.textContent = shown === total ? total + " " + noun : "Showing " + shown + " of " + total;
+        }
+        headers.forEach((headerCell) => {
+          const key = headerCell.getAttribute("data-sort");
+          headerCell.setAttribute("aria-sort", sortKey && key === sortKey ? (sortDir === 1 ? "ascending" : "descending") : "none");
+        });
+      }
+      headers.forEach((headerCell) => {
+        const button = headerCell.querySelector("button");
+        if (!button) return;
+        button.addEventListener("click", () => {
+          const key = headerCell.getAttribute("data-sort");
+          if (sortKey === key) sortDir *= -1;
+          else {
+            sortKey = key;
+            sortDir = 1;
+          }
+          apply();
+        });
+      });
+      table.querySelectorAll("[data-filter]").forEach((input) => {
+        input.addEventListener("input", apply);
+        input.addEventListener("change", apply);
+      });
+      if (clear) {
+        clear.addEventListener("click", () => {
+          table.querySelectorAll("[data-filter]").forEach((input) => { input.value = ""; });
+          apply();
+        });
+      }
+      apply();
+    }());
+  </script>
+</body>
+</html>

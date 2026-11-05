@@ -1,0 +1,11 @@
+{
+  "delivery_id": "evt-prompt-1",
+  "repo_id": "repo-prompt",
+  "repo_name": "prompt-boundary",
+  "service_id": "svc-prompt",
+  "service_name": "prompt-boundary",
+  "owner_team_id": "team-checkout",
+  "data_class": "internal",
+  "commit_sha": "prompt444",
+  "source_dir": "fixtures/repos/prompt-boundary"
+}

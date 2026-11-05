@@ -1,0 +1,11 @@
+{
+  "delivery_id": "evt-restricted-1",
+  "repo_id": "repo-restricted",
+  "repo_name": "restricted-order",
+  "service_id": "svc-restricted",
+  "service_name": "restricted-order",
+  "owner_team_id": "team-checkout",
+  "data_class": "restricted",
+  "commit_sha": "restrict333",
+  "source_dir": "fixtures/repos/restricted-order"
+}

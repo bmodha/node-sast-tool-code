@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Code review simulation</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0d1117;
+      --card: #161b22;
+      --ink: #e6edf3;
+      --muted: #8b949e;
+      --line: #30363d;
+      --soft: #21262d;
+      --accent: #58a6ff;
+      --accent-soft: #1c2d41;
+      --panel: #0d1117;
+      --critical: #f85149;
+      --high: #db6d28;
+      --medium: #d29922;
+      --low: #388bfd;
+      --info: #6e7681;
+      --clear: #3fb950;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: "Segoe UI", system-ui, sans-serif;
+      margin: 0;
+      color: var(--ink);
+      background: var(--bg);
+      line-height: 1.45;
+    }
+    .page { max-width: 1440px; margin: 0 auto; padding: 1.4rem 1.25rem 2.5rem; }
+    h1 { font-size: 1.45rem; font-weight: 650; letter-spacing: -0.02em; margin: 0 0 0.9rem; }
+    h2 { font-size: 1.02rem; font-weight: 650; color: var(--ink); margin: 0 0 0.45rem; }
+    h2 .count { font-size: 0.82rem; font-weight: 500; color: var(--muted); margin-left: 0.35rem; }
+    a { color: var(--accent); }
+    .top {
+      display: grid;
+      grid-template-columns: minmax(0, 1.55fr) minmax(16rem, 0.72fr);
+      gap: 0.9rem;
+      align-items: stretch;
+    }
+    .lead { display: grid; gap: 0.85rem; align-content: start; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 0.95rem 1.05rem 1.05rem;
+    }
+    .saved { margin: 0 0 0.75rem; color: var(--muted); font-size: 0.86rem; }
+    .meta { display: grid; gap: 0.32rem; margin: 0; }
+    .meta .field { position: relative; display: grid; grid-template-columns: 7.6rem minmax(0, 1fr); gap: 0.75rem; align-items: start; cursor: help; }
+    .field:hover, .field:focus-within { z-index: 5; }
+    .meta dt {
+      color: var(--muted);
+      font-size: 0.82rem;
+      padding-top: 0.08rem;
+      width: fit-content;
+      border-bottom: 1px dotted var(--muted);
+      cursor: help;
+    }
+    .meta dd { margin: 0; overflow-wrap: anywhere; }
+    .hint {
+      display: none;
+      position: absolute;
+      z-index: 4;
+      left: 0;
+      top: calc(100% + 0.2rem);
+      width: max-content;
+      max-width: 22rem;
+      margin: 0;
+      padding: 0.45rem 0.6rem;
+      background: #1c2128;
+      color: var(--ink);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      font-size: 0.78rem;
+      line-height: 1.35;
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55);
+    }
+    .field:hover .hint, .field:focus-within .hint { display: block; }
+    .summary { margin: 0; }
+    .analyzers { list-style: none; margin: 0; padding: 0; }
+    .analyzers li {
+      display: grid;
+      grid-template-columns: 0.55rem 1fr;
+      column-gap: 0.55rem;
+      row-gap: 0.05rem;
+      padding: 0.4rem 0;
+      border-bottom: 1px solid var(--soft);
+    }
+    .analyzers li:last-child { border-bottom: 0; padding-bottom: 0; }
+    .an-name { font-weight: 650; }
+    .an-status { grid-column: 2; color: var(--muted); font-size: 0.84rem; }
+    .empty-analyzer { color: var(--muted); display: block; }
+    .dot { width: 0.5rem; height: 0.5rem; border-radius: 50%; margin-top: 0.38rem; }
+    .dot-ok { background: var(--clear); }
+    .dot-skipped { background: var(--info); }
+    .dot-other { background: var(--accent); }
+    .findings, .history, .charts { margin-top: 0.9rem; }
+    .charts { display: grid; grid-template-columns: 1fr 1fr; gap: 0.9rem; }
+    .note { margin: 0 0 0.75rem; color: var(--muted); font-size: 0.86rem; }
+    .history ul { margin: 0; padding-left: 1.15rem; }
+    .history li { margin: 0.28rem 0; }
+    .back { margin: 0.7rem 0 0; }
+    .tools { margin: 0 0 0.65rem; }
+    .tools button, th button {
+      font: inherit;
+      color: var(--ink);
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 0.28rem 0.6rem;
+      cursor: pointer;
+    }
+    .tools button:hover, th button:hover { background: var(--accent-soft); }
+    th button { border: 0; background: none; border-radius: 6px; padding: 0; font-weight: 700; color: inherit; text-align: left; }
+    .wrap { overflow-x: auto; container-type: inline-size; }
+    table { border-collapse: collapse; width: 100%; min-width: 68rem; background: var(--card); }
+    .problem { min-width: 12rem; }
+    .code { min-width: 18rem; }
+    td:last-child { min-width: 6.2rem; }
+    th, td { padding: 0.48rem 0.55rem; text-align: left; font-size: 0.86rem; vertical-align: top; border-bottom: 1px solid var(--soft); }
+    thead th { background: var(--soft); color: var(--muted); }
+    th[aria-sort="ascending"] button::after { content: " ↑"; }
+    th[aria-sort="descending"] button::after { content: " ↓"; }
+    .filters th { background: var(--card); }
+    .filters input, .filters select {
+      width: 100%;
+      box-sizing: border-box;
+      font: inherit;
+      font-size: 0.75rem;
+      padding: 0.22rem 0.3rem;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--panel);
+      color: var(--ink);
+    }
+    tbody.finding:hover td { background: var(--soft); }
+    code {
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 0.8rem;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      background: var(--panel);
+      color: var(--ink);
+      border-radius: 4px;
+      padding: 0.12rem 0.28rem;
+    }
+    .where { white-space: normal; }
+    .muted { color: var(--muted); font-size: 0.8rem; }
+    .chip {
+      display: inline-block;
+      padding: 0.08rem 0.48rem;
+      border-radius: 999px;
+      font-weight: 650;
+      font-size: 0.78rem;
+      text-transform: capitalize;
+      letter-spacing: 0.01em;
+    }
+    .check { text-transform: none; }
+    .risk-critical, .status-block, .check-failure { background: #3d1214; color: #ff7b72; }
+    .risk-high { background: #3d220c; color: #f0883e; }
+    .risk-medium, .status-comment { background: #3d2e0a; color: #e3b341; }
+    .risk-low { background: #0d2847; color: #79c0ff; }
+    .status-clear, .check-success { background: #0f2d1a; color: #56d364; }
+    .risk-info { background: #21262d; color: #8b949e; }
+    .risk-select {
+      font: inherit;
+      font-weight: 650;
+      font-size: 0.78rem;
+      border-radius: 999px;
+      border: 1px solid transparent;
+      padding: 0.12rem 0.35rem;
+      cursor: pointer;
+      max-width: 9.8rem;
+    }
+    .risk-select:disabled { cursor: progress; opacity: 0.7; }
+    .subclass { font-weight: 650; }
+    tbody.finding[hidden] { display: none; }
+    details { margin: 0; }
+    summary { cursor: pointer; color: var(--ink); }
+    .similar-toggle {
+      display: block;
+      margin-top: 0.28rem;
+      padding: 0;
+      border: 0;
+      background: none;
+      color: var(--muted);
+      font: inherit;
+      font-size: 0.8rem;
+      text-align: left;
+      cursor: pointer;
+      width: fit-content;
+    }
+    .similar-toggle:hover { color: var(--accent); }
+    .similar-row > td { background: #10151c; padding: 0.75rem 0.7rem 0.9rem; }
+    table.compare {
+      min-width: 0;
+      width: min(100%, calc(100cqw - 1.4rem));
+      position: sticky;
+      left: 0.7rem;
+      background: transparent;
+    }
+    table.compare th:nth-child(4), table.compare td:nth-child(4) { width: 46%; }
+    table.compare th:nth-child(5), table.compare td:nth-child(5) { white-space: nowrap; }
+    .compare-note { margin: 0.45rem 0 0; }
+    .triage { display: grid; gap: 0.35rem; margin-top: 0.45rem; }
+    .triage p { margin: 0; }
+    .triage .k { font-weight: 650; }
+    .bars { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.55rem; }
+    .bars li { display: grid; grid-template-columns: 7.6rem 1fr 2rem; gap: 0.6rem; align-items: center; }
+    .bar-label { color: var(--muted); font-size: 0.88rem; }
+    .bar-track { height: 0.72rem; background: var(--soft); border-radius: 999px; overflow: hidden; }
+    .bar-fill { display: block; height: 100%; border-radius: 999px; min-width: 0; }
+    .bar-count { text-align: right; font-variant-numeric: tabular-nums; font-weight: 650; }
+    .fill-critical, .fill-block { background: var(--critical); }
+    .fill-high { background: var(--high); }
+    .fill-medium, .fill-comment { background: var(--medium); }
+    .fill-low { background: var(--low); }
+    .fill-clear { background: var(--clear); }
+    .fill-info { background: var(--info); }
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    @media (max-width: 860px) {
+      .top, .charts { grid-template-columns: 1fr; }
+      .where { white-space: normal; }
+    }
+  </style>
+</head>
+<body data-role="appsec" data-rating-url="" data-rating-token="">
+  <div class="page">
+    <h1>Code review simulation</h1>
+    <div class="top">
+      <div class="lead">
+        <section class="card">
+          <dl class="meta">
+            <div class="field" tabindex="0"><dt>Repository<p class="hint" role="tooltip">The repository this scan reviewed.</p></dt><dd>ID6-Vulnerable-nodejs-master</dd></div>
+            <div class="field" tabindex="0"><dt>Report<p class="hint" role="tooltip">This scan's report file. Earlier versions are listed at the bottom with the date and time they were saved.</p></dt><dd>ID6-Vulnerable-nodejs-master_report.html</dd></div>
+            <div class="field" tabindex="0"><dt>Role<p class="hint" role="tooltip">Who is viewing this report. AppSec also sees why a check fired and redacted secret previews.</p></dt><dd>appsec</dd></div>
+            <div class="field" tabindex="0"><dt>Deployment<p class="hint" role="tooltip">Failed or Passed. Failed means at least one finding blocks deployment. Passed means none do.</p></dt><dd><span class="chip check check-failure">Failed</span></dd></div>
+            <div class="field" tabindex="0"><dt>Why<p class="hint" role="tooltip">The reason this deployment failed or passed.</p></dt><dd>Deployment failed because 2 findings block it.</dd></div>
+            <div class="field" tabindex="0"><dt>Data class<p class="hint" role="tooltip">How sensitive the service is: public, internal, or restricted. Restricted can turn a high finding into a block.</p></dt><dd>restricted</dd></div>
+            <div class="field" tabindex="0"><dt>Cache hit<p class="hint" role="tooltip">Yes or no. Yes means this commit was already scanned with the same rules, so the analyzers did not run again.</p></dt><dd>no</dd></div>
+            <div class="field" tabindex="0"><dt>System 2<p class="hint" role="tooltip">The model review. Not run means only the rule checks produced these findings.</p></dt><dd>not_run</dd></div>
+            <div class="field" tabindex="0"><dt>Corpus<p class="hint" role="tooltip">The set of known-vulnerable samples this scan was compared with.</p></dt><dd>4c1da21c019a251cdd212bfb80cb4fe5a27ed69c548c2a2f70a6acdb636db09a</dd></div>
+            <div class="field" tabindex="0"><dt>Commit<p class="hint" role="tooltip">The commit that was scanned.</p></dt><dd>cee8ca1e8f87</dd></div>
+          </dl>
+        </section>
+        <section class="card">
+          <h2>Summary</h2>
+          <p class="summary">2 high, 11 medium.</p>
+        </section>
+      </div>
+      <aside class="card">
+        <h2>Analyzers</h2>
+        <ul class="analyzers"><li><span class="dot dot-ok" aria-hidden="true"></span><span class="an-name">eslint</span><span class="an-status">ok</span></li><li><span class="dot dot-ok" aria-hidden="true"></span><span class="an-name">templates</span><span class="an-status">ok</span></li><li><span class="dot dot-ok" aria-hidden="true"></span><span class="an-name">advisories</span><span class="an-status">ok</span></li><li><span class="dot dot-ok" aria-hidden="true"></span><span class="an-name">npm-audit</span><span class="an-status">ok</span></li><li><span class="dot dot-skipped" aria-hidden="true"></span><span class="an-name">gitleaks</span><span class="an-status">skipped</span></li><li><span class="dot dot-skipped" aria-hidden="true"></span><span class="an-name">trivy</span><span class="an-status">skipped</span></li><li><span class="dot dot-skipped" aria-hidden="true"></span><span class="an-name">snapshot</span><span class="an-status">skipped 6 oversize files</span></li></ul>
+      </aside>
+    </div>
+    <section class="findings card">
+      <h2>Findings <span id="finding-count" class="count"></span></h2>
+      <p class="note">Choose a risk rating to save it in the local database. The choices are informational, low, medium, high, and critical.</p>
+      <p id="risk-status" class="note" role="status"></p>
+      <p class="tools"><button type="button" id="clear-filters">Clear filters</button></p>
+      <div class="wrap">
+      <table id="findings">
+        <thead>
+          <tr><th data-sort="risk" aria-sort="none"><button type="button">Risk</button></th><th data-sort="class" aria-sort="none"><button type="button">Class</button></th><th data-sort="subclass" aria-sort="none"><button type="button">Subclass</button></th><th data-sort="finding" aria-sort="none"><button type="button">Finding</button></th><th data-sort="problem" aria-sort="none"><button type="button">Problem</button></th><th data-sort="where" aria-sort="none"><button type="button">Location</button></th><th data-sort="code" aria-sort="none"><button type="button">Code</button></th><th data-sort="confidence" aria-sort="none"><button type="button">Confidence (0–1)</button></th><th data-sort="next" aria-sort="none"><button type="button">Next step</button></th><th data-sort="gate" aria-sort="none"><button type="button">Pull Status</button></th></tr>
+          <tr class="filters"><th><select data-filter="risk" aria-label="Filter Risk"><option value="">All</option><option value="high">high</option><option value="medium">medium</option></select></th><th><select data-filter="class" aria-label="Filter Class"><option value="">All</option><option value="Access control">Access control</option><option value="Cryptography">Cryptography</option><option value="Error handling">Error handling</option><option value="Injection">Injection</option><option value="Secrets">Secrets</option><option value="Security configuration">Security configuration</option><option value="Session">Session</option></select></th><th><select data-filter="subclass" aria-label="Filter Subclass"><option value="">All</option><option value="Command injection">Command injection</option><option value="Cross-site request forgery">Cross-site request forgery</option><option value="Framework fingerprint">Framework fingerprint</option><option value="Hardcoded session secret">Hardcoded session secret</option><option value="Information disclosure">Information disclosure</option><option value="Log injection">Log injection</option><option value="Missing authorization">Missing authorization</option><option value="Timing-unsafe comparison">Timing-unsafe comparison</option></select></th><th><input data-filter="finding" aria-label="Filter Finding" placeholder="Filter"></th><th><input data-filter="problem" aria-label="Filter Problem" placeholder="Filter"></th><th><input data-filter="where" aria-label="Filter Location" placeholder="Filter"></th><th><input data-filter="code" aria-label="Filter Code" placeholder="Filter"></th><th><select data-filter="confidence" aria-label="Filter Confidence (0–1)"><option value="">All</option><option value="high">high</option><option value="medium">medium</option></select></th><th><input data-filter="next" aria-label="Filter Next step" placeholder="Filter"></th><th><select data-filter="gate" aria-label="Filter Pull Status"><option value="">All</option><option value="block">block</option><option value="comment">comment</option></select></th></tr>
+        </thead>
+        <tbody class="finding" data-risk="high" data-risk-rank="1" data-class="Secrets" data-subclass="Hardcoded session secret" data-finding="Session secret is a source literal" data-problem="The session secret is a fixed string in source. Anyone who can read it can forge a session cookie." data-where="Vulnerable-nodejs-master/app.js:29" data-code="secret: &quot;Shh, its a secret!&quot;," data-confidence="high" data-confidence-rank="0" data-next="Move this secret out of source and rotate it" data-gate="block" data-gate-rank="0">
+    <tr>
+      <td><select class="risk-select risk-high" data-finding="fa156134-3cfe-40ab-9df0-76aa9d36517b" aria-label="Risk rating"><option value="critical">critical</option><option value="high" selected>high</option><option value="medium">medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Secrets</td>
+      <td class="subclass">Hardcoded session secret</td>
+      <td>Session secret is a source literal</td>
+      <td class="problem">The session secret is a fixed string in source. Anyone who can read it can forge a session cookie.</td>
+      <td class="where">Vulnerable-nodejs-master/app.js:29</td>
+      <td class="code"><code>secret: &quot;Shh, its a secret!&quot;,</code></td>
+      <td>high (0.90)</td>
+      <td>Move this secret out of source and rotate it</td>
+      <td><span class="chip status-block">block</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> session() is given a secret property whose value is a string literal. It looks for session secret literal.</p><p><span class="k">Clears when.</span> environment variable or secret store is present.</p><p><span class="k">Cannot see.</span> A secret copied from a variable is not resolved. Gitleaks remains a separate credential scan.</p><p>Clone likeness: 0.203. Patched twin: 0.219.</p><p class="muted">CWE-798 · js.session.secret · waiver id 86c102f77437b772</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="high" data-risk-rank="1" data-class="Injection" data-subclass="Command injection" data-finding="OS command injection via shell exec" data-problem="A shell command is present. This line does not show request data. If a caller can influence the command, they can run operating-system commands on the host." data-where="Vulnerable-nodejs-master/execphp.js:23" data-code="exec(cmd, function(error, stdout, stderr) { callback(stdout); });" data-confidence="high" data-confidence-rank="0" data-next="Confirm the command is not built from request data" data-gate="block" data-gate-rank="0">
+    <tr>
+      <td><select class="risk-select risk-high" data-finding="044d07e2-47fd-4120-9e6d-6642340db2aa" aria-label="Risk rating"><option value="critical">critical</option><option value="high" selected>high</option><option value="medium">medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Injection</td>
+      <td class="subclass">Command injection</td>
+      <td>OS command injection via shell exec</td>
+      <td class="problem">A shell command is present. This line does not show request data. If a caller can influence the command, they can run operating-system commands on the host.</td>
+      <td class="where">Vulnerable-nodejs-master/execphp.js:23</td>
+      <td class="code"><code>exec(cmd, function(error, stdout, stderr) {
+			callback(stdout);
+		});</code></td>
+      <td>high (0.90)</td>
+      <td>Confirm the command is not built from request data</td>
+      <td><span class="chip status-block">block</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> A shell exec call or a child_process import is present. It looks for child_process.exec or child_process import.</p><p><span class="k">Clears when.</span> execFile with an argument array is present.</p><p><span class="k">Cannot see.</span> Argument injection, PATH hijacking, and shell dialect are the same finding.</p><p>Clone likeness: 0.281. Patched twin: 0.375.</p><p class="muted">CWE-78 · detect-child-process · waiver id 16ac052e4e5792fa</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Security configuration" data-subclass="Framework fingerprint" data-finding="X-Powered-By header left on" data-problem="This file starts Express and does not disable X-Powered-By. Responses advertise the framework." data-where="Vulnerable-nodejs-master/app.js:22" data-code="let app = express();" data-confidence="medium" data-confidence-rank="1" data-next="Confirm the framework name header is disabled" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="b1a855fe-fc84-4ada-98b6-58a153a50536" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Security configuration</td>
+      <td class="subclass">Framework fingerprint</td>
+      <td>X-Powered-By header left on</td>
+      <td class="problem">This file starts Express and does not disable X-Powered-By. Responses advertise the framework.</td>
+      <td class="where">Vulnerable-nodejs-master/app.js:22</td>
+      <td class="code"><code>let app = express();</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm the framework name header is disabled</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> The file calls express() and does not disable x-powered-by. It looks for express().</p><p><span class="k">Clears when.</span> disable x-powered-by is present.</p><p><span class="k">Cannot see.</span> A disable call in another file is not visible.</p><p>Clone likeness: 0.203. Patched twin: 0.219.</p><p class="muted">CWE-200 · js.config.powered-by · waiver id b3d9e27a8ff03e21</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Access control" data-subclass="Missing authorization" data-finding="Admin route has no admin check in this file" data-problem="This admin route does not check a role in this file. A signed-in caller who is not an admin can call it if the handler does not check either." data-where="Vulnerable-nodejs-master/routes/admin.js:5" data-code="router.get('/admin', function(req, res) { res.render('admin', { title: 'Admin Interface' }); });" data-confidence="medium" data-confidence-rank="1" data-next="Confirm the handler checks the caller's role" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="3d1e70b9-c05d-44c3-a7e3-771c62fe5baa" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Access control</td>
+      <td class="subclass">Missing authorization</td>
+      <td>Admin route has no admin check in this file</td>
+      <td class="problem">This admin route does not check a role in this file. A signed-in caller who is not an admin can call it if the handler does not check either.</td>
+      <td class="where">Vulnerable-nodejs-master/routes/admin.js:5</td>
+      <td class="code"><code>router.get('/admin', function(req, res) {
+  res.render('admin', { title: 'Admin Interface' });
+});</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm the handler checks the caller's role</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> The route path contains /admin and no handler in this call reads a role or is named as an admin check. It looks for admin route.</p><p><span class="k">Clears when.</span> admin middleware or role check in the handler is present.</p><p><span class="k">Cannot see.</span> A check inside a handler defined in another file is not visible.</p><p>Clone likeness: 0.359. Patched twin: 0.375.</p><p class="muted">CWE-862 · js.authz.admin-route · waiver id ec5b448970379dcb</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Session" data-subclass="Cross-site request forgery" data-finding="State-changing route has no CSRF check" data-problem="This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user." data-where="Vulnerable-nodejs-master/routes/users.js:16" data-code="router.post('/adduser', async function (req, res) { var db = req.db; var collection = db.get('userlist'); // no duplicate username is allowed var user = await collection.findOne({ &quot;username&quot;:…" data-confidence="medium" data-confidence-rank="1" data-next="Confirm a CSRF check is mounted for this route" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="a8650061-b49b-4954-96eb-433557709996" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Session</td>
+      <td class="subclass">Cross-site request forgery</td>
+      <td>State-changing route has no CSRF check</td>
+      <td class="problem">This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user.</td>
+      <td class="where">Vulnerable-nodejs-master/routes/users.js:16</td>
+      <td class="code"><code>router.post('/adduser', async function (req, res) {
+  var db = req.db;
+  var collection = db.get('userlist');
+
+  // no duplicate username is allowed
+  var user = await collection.findOne({ &quot;username&quot;:…</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm a CSRF check is mounted for this route</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> The file registers a state-changing route and never mentions csrf or csurf. It looks for post, put, patch, or delete.</p><p><span class="k">Clears when.</span> csrf middleware is present.</p><p><span class="k">Cannot see.</span> A check mounted in another file is not visible. Every state-changing route in the file is reported.</p><p>Clone likeness: 0.234. Patched twin: 0.25.</p><p class="muted">CWE-352 · js.csrf.missing · waiver id 6d07c87ab2d96ac1</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Error handling" data-subclass="Information disclosure" data-finding="Error detail sent to the client" data-problem="The response includes an error object, message, or stack. The client learns internal paths, queries, or library details." data-where="Vulnerable-nodejs-master/routes/users.js:26; Vulnerable-nodejs-master/routes/users.js:118" data-code="res.send( (err === null) ? { msg: '' } : { msg: err } ); res.send( (err === null) ? { msg: '' } : { msg: err } );" data-confidence="medium" data-confidence-rank="1" data-next="Confirm the response uses a fixed message" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="94a42436-dc73-4ebf-85a5-f07fdbff95fe" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Error handling</td>
+      <td class="subclass">Information disclosure</td>
+      <td>Error detail sent to the client</td>
+      <td class="problem">The response includes an error object, message, or stack. The client learns internal paths, queries, or library details.</td>
+      <td class="where">Vulnerable-nodejs-master/routes/users.js:26; Vulnerable-nodejs-master/routes/users.js:118</td>
+      <td class="code"><code>res.send(
+        (err === null) ? { msg: '' } : { msg: err }
+      );
+
+res.send(
+        (err === null) ? { msg: '' } : { msg: err }
+      );</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm the response uses a fixed message</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> err, err.stack, or err.message is passed to the response. It looks for res.send, res.json, or res.end.</p><p><span class="k">Clears when.</span> fixed error message is present.</p><p><span class="k">Cannot see.</span> PII classes are not inferred without a data inventory.</p><p>Clone likeness: 0.234. Patched twin: 0.25.</p><p class="muted">CWE-209 · js.error.client · waiver id 83e7f53757b9691b</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Session" data-subclass="Cross-site request forgery" data-finding="State-changing route has no CSRF check" data-problem="This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user." data-where="Vulnerable-nodejs-master/routes/users.js:34" data-code="router.delete('/deleteuser/:id', function (req, res) { var db = req.db; var collection = db.get('userlist'); var userToDelete = req.params.id; collection.remove({ '_id': userToDelete }, functi…" data-confidence="medium" data-confidence-rank="1" data-next="Confirm a CSRF check is mounted for this route" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="a37e21e0-0cc3-4170-a72b-49efa3aeaf0a" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Session</td>
+      <td class="subclass">Cross-site request forgery</td>
+      <td>State-changing route has no CSRF check</td>
+      <td class="problem">This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user.</td>
+      <td class="where">Vulnerable-nodejs-master/routes/users.js:34</td>
+      <td class="code"><code>router.delete('/deleteuser/:id', function (req, res) {
+  var db = req.db;
+  var collection = db.get('userlist');
+  var userToDelete = req.params.id;
+  collection.remove({ '_id': userToDelete }, functi…</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm a CSRF check is mounted for this route</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> The file registers a state-changing route and never mentions csrf or csurf. It looks for post, put, patch, or delete.</p><p><span class="k">Clears when.</span> csrf middleware is present.</p><p><span class="k">Cannot see.</span> A check mounted in another file is not visible. Every state-changing route in the file is reported.</p><p>Clone likeness: 0.234. Patched twin: 0.25.</p><p class="muted">CWE-352 · js.csrf.missing · waiver id 82305d945ca58549</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Error handling" data-subclass="Information disclosure" data-finding="Error detail sent to the client" data-problem="The response includes an error object, message, or stack. The client learns internal paths, queries, or library details." data-where="Vulnerable-nodejs-master/routes/users.js:39" data-code="res.send((err === null) ? { msg: '' } : { msg: 'error: ' + err });" data-confidence="medium" data-confidence-rank="1" data-next="Confirm the response uses a fixed message" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="d63d3e15-2991-4c64-b993-eec9ded8593c" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Error handling</td>
+      <td class="subclass">Information disclosure</td>
+      <td>Error detail sent to the client</td>
+      <td class="problem">The response includes an error object, message, or stack. The client learns internal paths, queries, or library details.</td>
+      <td class="where">Vulnerable-nodejs-master/routes/users.js:39</td>
+      <td class="code"><code>res.send((err === null) ? { msg: '' } : { msg: 'error: ' + err });</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm the response uses a fixed message</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> err, err.stack, or err.message is passed to the response. It looks for res.send, res.json, or res.end.</p><p><span class="k">Clears when.</span> fixed error message is present.</p><p><span class="k">Cannot see.</span> PII classes are not inferred without a data inventory.</p><p>Clone likeness: 0.234. Patched twin: 0.25.</p><p class="muted">CWE-209 · js.error.client · waiver id 0fbf9d2ad34f46a6</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Session" data-subclass="Cross-site request forgery" data-finding="State-changing route has no CSRF check" data-problem="This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user." data-where="Vulnerable-nodejs-master/routes/users.js:46" data-code="router.post('/session', async function (req, res) { // session exists and send it back if (req.session.user) { res.send({ user: req.session.user }); } else { // check the field should no…" data-confidence="medium" data-confidence-rank="1" data-next="Confirm a CSRF check is mounted for this route" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="e2be4c6f-45e1-451c-a8cf-971f96e7c82b" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Session</td>
+      <td class="subclass">Cross-site request forgery</td>
+      <td>State-changing route has no CSRF check</td>
+      <td class="problem">This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user.</td>
+      <td class="where">Vulnerable-nodejs-master/routes/users.js:46</td>
+      <td class="code"><code>router.post('/session', async function (req, res) {
+  // session exists and send it back
+  if (req.session.user) {
+    res.send({ user: req.session.user });
+  } else {
+    // check the field should no…</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm a CSRF check is mounted for this route</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> The file registers a state-changing route and never mentions csrf or csurf. It looks for post, put, patch, or delete.</p><p><span class="k">Clears when.</span> csrf middleware is present.</p><p><span class="k">Cannot see.</span> A check mounted in another file is not visible. Every state-changing route in the file is reported.</p><p>Clone likeness: 0.234. Patched twin: 0.25.</p><p class="muted">CWE-352 · js.csrf.missing · waiver id 4f6541e20939dfc5</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Cryptography" data-subclass="Timing-unsafe comparison" data-finding="Secret compared with ordinary equality" data-problem="A password, token, or secret is compared with ordinary equality. The comparison can reveal how much of the secret matched." data-where="Vulnerable-nodejs-master/routes/users.js:52" data-code="if (req.body.username === '' || req.body.password === '') {" data-confidence="medium" data-confidence-rank="1" data-next="Confirm this value is not a token, password, or cipher input" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="8878ec42-73cd-40f7-9f60-963101487a80" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Cryptography</td>
+      <td class="subclass">Timing-unsafe comparison</td>
+      <td>Secret compared with ordinary equality</td>
+      <td class="problem">A password, token, or secret is compared with ordinary equality. The comparison can reveal how much of the secret matched.</td>
+      <td class="where">Vulnerable-nodejs-master/routes/users.js:52</td>
+      <td class="code"><code>if (req.body.username === '' || req.body.password === '') {</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm this value is not a token, password, or cipher input</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> A weak algorithm, a static IV, Math.random, or an ordinary secret comparison is in source. It looks for md5, sha1, Math.random, createCipheriv, or equality.</p><p><span class="k">Clears when.</span> modern digest, randomBytes, random IV, or timing-safe compare is present.</p><p><span class="k">Cannot see.</span> Ordinary equality that does not name a password, token, or secret is ignored.</p><p>Clone likeness: 0.234. Patched twin: 0.25.</p><p class="muted">CWE-327, CWE-328, CWE-208 · js.crypto.md5-token · waiver id 502801fe6ec7b793</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Injection" data-subclass="Log injection" data-finding="Log injection" data-problem="Request data is written into a log line. A newline in that value can forge later log entries." data-where="Vulnerable-nodejs-master/routes/users.js:66; Vulnerable-nodejs-master/routes/users.js:85" data-code="console.log( `Session.login success: ${req.session.user.username}` ); console.log( `Session.login destroy: ${req.session.user.username}` );" data-confidence="medium" data-confidence-rank="1" data-next="Confirm control characters are stripped before this write" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="5e0431b8-fdcc-4d8c-9995-55f7af448992" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Injection</td>
+      <td class="subclass">Log injection</td>
+      <td>Log injection</td>
+      <td class="problem">Request data is written into a log line. A newline in that value can forge later log entries.</td>
+      <td class="where">Vulnerable-nodejs-master/routes/users.js:66; Vulnerable-nodejs-master/routes/users.js:85</td>
+      <td class="code"><code>console.log(
+            `Session.login success: ${req.session.user.username}`
+          );
+
+console.log(
+      `Session.login destroy: ${req.session.user.username}`
+    );</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm control characters are stripped before this write</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> Request data reaches a header, mail, log, or CSV call. It looks for setHeader, sendMail, log, or writeCsv.</p><p><span class="k">Clears when.</span> stripCrlf, structured log, or CSV escape is present.</p><p><span class="k">Cannot see.</span> Passwords, tokens, and req.body are reported by the sensitive-log rule instead.</p><p>Clone likeness: 0.234. Patched twin: 0.25.</p><p class="muted">CWE-93, CWE-117 · js.control.char · waiver id 564347a2b140804c</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Session" data-subclass="Cross-site request forgery" data-finding="State-changing route has no CSRF check" data-problem="This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user." data-where="Vulnerable-nodejs-master/routes/users.js:83" data-code="router.delete('/session', (req, res) =&gt; { if (req.session.user) { console.log( `Session.login destroy: ${req.session.user.username}` ); req.session.destroy(() =&gt; { res.status…" data-confidence="medium" data-confidence-rank="1" data-next="Confirm a CSRF check is mounted for this route" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="06d212a0-8238-4999-badc-52aeeae35dec" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Session</td>
+      <td class="subclass">Cross-site request forgery</td>
+      <td>State-changing route has no CSRF check</td>
+      <td class="problem">This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user.</td>
+      <td class="where">Vulnerable-nodejs-master/routes/users.js:83</td>
+      <td class="code"><code>router.delete('/session', (req, res) =&gt; {
+  if (req.session.user) {
+    console.log(
+      `Session.login destroy: ${req.session.user.username}`
+    );
+    req.session.destroy(() =&gt; {
+      res.status…</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm a CSRF check is mounted for this route</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> The file registers a state-changing route and never mentions csrf or csurf. It looks for post, put, patch, or delete.</p><p><span class="k">Clears when.</span> csrf middleware is present.</p><p><span class="k">Cannot see.</span> A check mounted in another file is not visible. Every state-changing route in the file is reported.</p><p>Clone likeness: 0.234. Patched twin: 0.25.</p><p class="muted">CWE-352 · js.csrf.missing · waiver id 5abffda4d54c168b</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Session" data-subclass="Cross-site request forgery" data-finding="State-changing route has no CSRF check" data-problem="This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user." data-where="Vulnerable-nodejs-master/routes/users.js:104" data-code="router.put('/modify', async function (req, res) { // check is login if (!req.session.user) { res.send({ msg: &quot;login first&quot; }).end(); } else { var db = req.db; var collection = db.get…" data-confidence="medium" data-confidence-rank="1" data-next="Confirm a CSRF check is mounted for this route" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="672c5864-4490-4e18-99a9-94b07bde8c42" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Session</td>
+      <td class="subclass">Cross-site request forgery</td>
+      <td>State-changing route has no CSRF check</td>
+      <td class="problem">This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user.</td>
+      <td class="where">Vulnerable-nodejs-master/routes/users.js:104</td>
+      <td class="code"><code>router.put('/modify', async function (req, res) {
+  // check is login
+  if (!req.session.user) {
+    res.send({ msg: &quot;login first&quot; }).end();
+  } else {
+    var db = req.db;
+    var collection = db.get…</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm a CSRF check is mounted for this route</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> The file registers a state-changing route and never mentions csrf or csurf. It looks for post, put, patch, or delete.</p><p><span class="k">Clears when.</span> csrf middleware is present.</p><p><span class="k">Cannot see.</span> A check mounted in another file is not visible. Every state-changing route in the file is reported.</p><p>Clone likeness: 0.234. Patched twin: 0.25.</p><p class="muted">CWE-352 · js.csrf.missing · waiver id b25a735a2e83e79b</p></div>
+    </details></td></tr>
+    </tbody>
+      </table>
+      </div>
+    </section>
+    <section class="charts">
+      <div class="chart card">
+    <h2>Risk</h2>
+    <p class="note">Findings in each risk classification.</p>
+    <ul class="bars"><li>
+      <span class="bar-label">critical</span>
+      <span class="bar-track"><span class="bar-fill fill-critical" style="width:0%"></span></span>
+      <span class="bar-count">0</span>
+    </li><li>
+      <span class="bar-label">high</span>
+      <span class="bar-track"><span class="bar-fill fill-high" style="width:18.2%"></span></span>
+      <span class="bar-count">2</span>
+    </li><li>
+      <span class="bar-label">medium</span>
+      <span class="bar-track"><span class="bar-fill fill-medium" style="width:100%"></span></span>
+      <span class="bar-count">11</span>
+    </li><li>
+      <span class="bar-label">low</span>
+      <span class="bar-track"><span class="bar-fill fill-low" style="width:0%"></span></span>
+      <span class="bar-count">0</span>
+    </li></ul>
+  </div>
+      <div class="chart card">
+    <h2>Pull status</h2>
+    <p class="note">Findings that block, comment, or were cleared.</p>
+    <ul class="bars"><li>
+      <span class="bar-label">block</span>
+      <span class="bar-track"><span class="bar-fill fill-block" style="width:18.2%"></span></span>
+      <span class="bar-count">2</span>
+    </li><li>
+      <span class="bar-label">comment</span>
+      <span class="bar-track"><span class="bar-fill fill-comment" style="width:100%"></span></span>
+      <span class="bar-count">11</span>
+    </li><li>
+      <span class="bar-label">cleared</span>
+      <span class="bar-track"><span class="bar-fill fill-clear" style="width:0%"></span></span>
+      <span class="bar-count">0</span>
+    </li></ul>
+  </div>
+    </section>
+    <section class="history card" id="report-archive">
+    <h2>Report archive</h2>
+    <p class="note">Earlier versions of this report, with the date and time each one was saved.</p>
+    <p class="muted">No earlier versions yet.</p>
+  </section>
+  </div>
+  <script>
+    (function () {
+      document.querySelectorAll(".risk-select").forEach((select) => {
+        select.dataset.saved = select.value;
+        select.addEventListener("change", () => {
+          const status = document.getElementById("risk-status");
+          const url = document.body.getAttribute("data-rating-url") || "";
+          if (!url) {
+            select.value = select.dataset.saved || select.value;
+            if (status) status.textContent = "This report has no save address.";
+            return;
+          }
+          if (status) status.textContent = "Saving rating…";
+          select.disabled = true;
+          const form = document.createElement("form");
+          form.method = "POST";
+          form.action = url;
+          const fields = {
+            finding_id: select.getAttribute("data-finding") || "",
+            risk_rating: select.value,
+            role: document.body.getAttribute("data-role") || "",
+            token: document.body.getAttribute("data-rating-token") || "",
+          };
+          for (const [name, value] of Object.entries(fields)) {
+            const input = document.createElement("input");
+            input.type = "hidden";
+            input.name = name;
+            input.value = value;
+            form.appendChild(input);
+          }
+          document.body.appendChild(form);
+          form.submit();
+        });
+      });
+      const table = document.getElementById("findings");
+      if (!table) return;
+      table.querySelectorAll(".similar-toggle").forEach((button) => {
+        button.addEventListener("click", () => {
+          const panel = button.closest("tbody") && button.closest("tbody").querySelector(".similar-row");
+          if (!panel) return;
+          const open = panel.hasAttribute("hidden");
+          panel.toggleAttribute("hidden", !open);
+          button.setAttribute("aria-expanded", open ? "true" : "false");
+        });
+      });
+      const headers = [...table.querySelectorAll("thead th[data-sort]")];
+      const count = document.getElementById("finding-count");
+      const clear = document.getElementById("clear-filters");
+      let sortKey = "risk";
+      let sortDir = 1;
+      function groups() {
+        return [...table.querySelectorAll("tbody.finding")];
+      }
+      function compare(left, right) {
+        const leftRank = left.getAttribute("data-" + sortKey + "-rank");
+        const rightRank = right.getAttribute("data-" + sortKey + "-rank");
+        if (leftRank !== null && rightRank !== null) return (Number(leftRank) - Number(rightRank)) * sortDir;
+        const leftText = left.getAttribute("data-" + sortKey) || "";
+        const rightText = right.getAttribute("data-" + sortKey) || "";
+        return leftText.localeCompare(rightText, undefined, { numeric: true, sensitivity: "base" }) * sortDir;
+      }
+      function apply() {
+        const filters = {};
+        table.querySelectorAll("[data-filter]").forEach((input) => {
+          filters[input.getAttribute("data-filter")] = input.value.trim().toLowerCase();
+        });
+        const rows = groups().sort(compare);
+        let shown = 0;
+        for (const row of rows) {
+          table.appendChild(row);
+          const hide = Object.entries(filters).some(([key, query]) => {
+            if (!query) return false;
+            return !(row.getAttribute("data-" + key) || "").toLowerCase().includes(query);
+          });
+          row.hidden = hide;
+          if (!hide) shown += 1;
+        }
+        if (count) {
+          const total = rows.length;
+          count.textContent = shown === total ? (total === 1 ? "1 finding" : total + " findings") : "Showing " + shown + " of " + total;
+        }
+        headers.forEach((headerCell) => {
+          const key = headerCell.getAttribute("data-sort");
+          headerCell.setAttribute("aria-sort", key === sortKey ? (sortDir === 1 ? "ascending" : "descending") : "none");
+        });
+      }
+      headers.forEach((headerCell) => {
+        const button = headerCell.querySelector("button");
+        if (!button) return;
+        button.addEventListener("click", () => {
+          const key = headerCell.getAttribute("data-sort");
+          if (sortKey === key) sortDir *= -1;
+          else {
+            sortKey = key;
+            sortDir = 1;
+          }
+          apply();
+        });
+      });
+      table.querySelectorAll("[data-filter]").forEach((input) => {
+        input.addEventListener("input", apply);
+        input.addEventListener("change", apply);
+      });
+      if (clear) {
+        clear.addEventListener("click", () => {
+          table.querySelectorAll("[data-filter]").forEach((input) => { input.value = ""; });
+          apply();
+        });
+      }
+      apply();
+    }());
+  </script>
+</body>
+</html>

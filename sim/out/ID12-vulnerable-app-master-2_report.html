@@ -1,0 +1,933 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Code review simulation</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0d1117;
+      --card: #161b22;
+      --ink: #e6edf3;
+      --muted: #8b949e;
+      --line: #30363d;
+      --soft: #21262d;
+      --accent: #58a6ff;
+      --accent-soft: #1c2d41;
+      --panel: #0d1117;
+      --critical: #f85149;
+      --high: #db6d28;
+      --medium: #d29922;
+      --low: #388bfd;
+      --info: #6e7681;
+      --clear: #3fb950;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: "Segoe UI", system-ui, sans-serif;
+      margin: 0;
+      color: var(--ink);
+      background: var(--bg);
+      line-height: 1.45;
+    }
+    .page { max-width: 1440px; margin: 0 auto; padding: 1.4rem 1.25rem 2.5rem; }
+    h1 { font-size: 1.45rem; font-weight: 650; letter-spacing: -0.02em; margin: 0 0 0.9rem; }
+    h2 { font-size: 1.02rem; font-weight: 650; color: var(--ink); margin: 0 0 0.45rem; }
+    h2 .count { font-size: 0.82rem; font-weight: 500; color: var(--muted); margin-left: 0.35rem; }
+    a { color: var(--accent); }
+    .top {
+      display: grid;
+      grid-template-columns: minmax(0, 1.55fr) minmax(16rem, 0.72fr);
+      gap: 0.9rem;
+      align-items: stretch;
+    }
+    .lead { display: grid; gap: 0.85rem; align-content: start; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 0.95rem 1.05rem 1.05rem;
+    }
+    .saved { margin: 0 0 0.75rem; color: var(--muted); font-size: 0.86rem; }
+    .meta { display: grid; gap: 0.32rem; margin: 0; }
+    .meta .field { position: relative; display: grid; grid-template-columns: 7.6rem minmax(0, 1fr); gap: 0.75rem; align-items: start; cursor: help; }
+    .field:hover, .field:focus-within { z-index: 5; }
+    .meta dt {
+      color: var(--muted);
+      font-size: 0.82rem;
+      padding-top: 0.08rem;
+      width: fit-content;
+      border-bottom: 1px dotted var(--muted);
+      cursor: help;
+    }
+    .meta dd { margin: 0; overflow-wrap: anywhere; }
+    .hint {
+      display: none;
+      position: absolute;
+      z-index: 4;
+      left: 0;
+      top: calc(100% + 0.2rem);
+      width: max-content;
+      max-width: 22rem;
+      margin: 0;
+      padding: 0.45rem 0.6rem;
+      background: #1c2128;
+      color: var(--ink);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      font-size: 0.78rem;
+      line-height: 1.35;
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55);
+    }
+    .field:hover .hint, .field:focus-within .hint { display: block; }
+    .summary { margin: 0; }
+    .analyzers { list-style: none; margin: 0; padding: 0; }
+    .analyzers li {
+      display: grid;
+      grid-template-columns: 0.55rem 1fr;
+      column-gap: 0.55rem;
+      row-gap: 0.05rem;
+      padding: 0.4rem 0;
+      border-bottom: 1px solid var(--soft);
+    }
+    .analyzers li:last-child { border-bottom: 0; padding-bottom: 0; }
+    .an-name { font-weight: 650; }
+    .an-status { grid-column: 2; color: var(--muted); font-size: 0.84rem; }
+    .empty-analyzer { color: var(--muted); display: block; }
+    .dot { width: 0.5rem; height: 0.5rem; border-radius: 50%; margin-top: 0.38rem; }
+    .dot-ok { background: var(--clear); }
+    .dot-skipped { background: var(--info); }
+    .dot-other { background: var(--accent); }
+    .findings, .history, .charts { margin-top: 0.9rem; }
+    .charts { display: grid; grid-template-columns: 1fr 1fr; gap: 0.9rem; }
+    .note { margin: 0 0 0.75rem; color: var(--muted); font-size: 0.86rem; }
+    .history ul { margin: 0; padding-left: 1.15rem; }
+    .history li { margin: 0.28rem 0; }
+    .back { margin: 0.7rem 0 0; }
+    .tools { margin: 0 0 0.65rem; }
+    .tools button, th button {
+      font: inherit;
+      color: var(--ink);
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 0.28rem 0.6rem;
+      cursor: pointer;
+    }
+    .tools button:hover, th button:hover { background: var(--accent-soft); }
+    th button { border: 0; background: none; border-radius: 6px; padding: 0; font-weight: 700; color: inherit; text-align: left; }
+    .wrap { overflow-x: auto; container-type: inline-size; }
+    table { border-collapse: collapse; width: 100%; min-width: 68rem; background: var(--card); }
+    .problem { min-width: 12rem; }
+    .code { min-width: 18rem; }
+    td:last-child { min-width: 6.2rem; }
+    th, td { padding: 0.48rem 0.55rem; text-align: left; font-size: 0.86rem; vertical-align: top; border-bottom: 1px solid var(--soft); }
+    thead th { background: var(--soft); color: var(--muted); }
+    th[aria-sort="ascending"] button::after { content: " ↑"; }
+    th[aria-sort="descending"] button::after { content: " ↓"; }
+    .filters th { background: var(--card); }
+    .filters input, .filters select {
+      width: 100%;
+      box-sizing: border-box;
+      font: inherit;
+      font-size: 0.75rem;
+      padding: 0.22rem 0.3rem;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--panel);
+      color: var(--ink);
+    }
+    tbody.finding:hover td { background: var(--soft); }
+    code {
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 0.8rem;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      background: var(--panel);
+      color: var(--ink);
+      border-radius: 4px;
+      padding: 0.12rem 0.28rem;
+    }
+    .where { white-space: normal; }
+    .muted { color: var(--muted); font-size: 0.8rem; }
+    .chip {
+      display: inline-block;
+      padding: 0.08rem 0.48rem;
+      border-radius: 999px;
+      font-weight: 650;
+      font-size: 0.78rem;
+      text-transform: capitalize;
+      letter-spacing: 0.01em;
+    }
+    .check { text-transform: none; }
+    .risk-critical, .status-block, .check-failure { background: #3d1214; color: #ff7b72; }
+    .risk-high { background: #3d220c; color: #f0883e; }
+    .risk-medium, .status-comment { background: #3d2e0a; color: #e3b341; }
+    .risk-low { background: #0d2847; color: #79c0ff; }
+    .status-clear, .check-success { background: #0f2d1a; color: #56d364; }
+    .risk-info { background: #21262d; color: #8b949e; }
+    .risk-select {
+      font: inherit;
+      font-weight: 650;
+      font-size: 0.78rem;
+      border-radius: 999px;
+      border: 1px solid transparent;
+      padding: 0.12rem 0.35rem;
+      cursor: pointer;
+      max-width: 9.8rem;
+    }
+    .risk-select:disabled { cursor: progress; opacity: 0.7; }
+    .subclass { font-weight: 650; }
+    tbody.finding[hidden] { display: none; }
+    details { margin: 0; }
+    summary { cursor: pointer; color: var(--ink); }
+    .similar-toggle {
+      display: block;
+      margin-top: 0.28rem;
+      padding: 0;
+      border: 0;
+      background: none;
+      color: var(--muted);
+      font: inherit;
+      font-size: 0.8rem;
+      text-align: left;
+      cursor: pointer;
+      width: fit-content;
+    }
+    .similar-toggle:hover { color: var(--accent); }
+    .similar-row > td { background: #10151c; padding: 0.75rem 0.7rem 0.9rem; }
+    table.compare {
+      min-width: 0;
+      width: min(100%, calc(100cqw - 1.4rem));
+      position: sticky;
+      left: 0.7rem;
+      background: transparent;
+    }
+    table.compare th:nth-child(4), table.compare td:nth-child(4) { width: 46%; }
+    table.compare th:nth-child(5), table.compare td:nth-child(5) { white-space: nowrap; }
+    .compare-note { margin: 0.45rem 0 0; }
+    .triage { display: grid; gap: 0.35rem; margin-top: 0.45rem; }
+    .triage p { margin: 0; }
+    .triage .k { font-weight: 650; }
+    .bars { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.55rem; }
+    .bars li { display: grid; grid-template-columns: 7.6rem 1fr 2rem; gap: 0.6rem; align-items: center; }
+    .bar-label { color: var(--muted); font-size: 0.88rem; }
+    .bar-track { height: 0.72rem; background: var(--soft); border-radius: 999px; overflow: hidden; }
+    .bar-fill { display: block; height: 100%; border-radius: 999px; min-width: 0; }
+    .bar-count { text-align: right; font-variant-numeric: tabular-nums; font-weight: 650; }
+    .fill-critical, .fill-block { background: var(--critical); }
+    .fill-high { background: var(--high); }
+    .fill-medium, .fill-comment { background: var(--medium); }
+    .fill-low { background: var(--low); }
+    .fill-clear { background: var(--clear); }
+    .fill-info { background: var(--info); }
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    @media (max-width: 860px) {
+      .top, .charts { grid-template-columns: 1fr; }
+      .where { white-space: normal; }
+    }
+  </style>
+</head>
+<body data-role="appsec" data-rating-url="" data-rating-token="">
+  <div class="page">
+    <h1>Code review simulation</h1>
+    <div class="top">
+      <div class="lead">
+        <section class="card">
+          <dl class="meta">
+            <div class="field" tabindex="0"><dt>Repository<p class="hint" role="tooltip">The repository this scan reviewed.</p></dt><dd>ID12-vulnerable-app-master-2</dd></div>
+            <div class="field" tabindex="0"><dt>Report<p class="hint" role="tooltip">This scan's report file. Earlier versions are listed at the bottom with the date and time they were saved.</p></dt><dd>ID12-vulnerable-app-master-2_report.html</dd></div>
+            <div class="field" tabindex="0"><dt>Role<p class="hint" role="tooltip">Who is viewing this report. AppSec also sees why a check fired and redacted secret previews.</p></dt><dd>appsec</dd></div>
+            <div class="field" tabindex="0"><dt>Deployment<p class="hint" role="tooltip">Failed or Passed. Failed means at least one finding blocks deployment. Passed means none do.</p></dt><dd><span class="chip check check-success">Passed</span></dd></div>
+            <div class="field" tabindex="0"><dt>Why<p class="hint" role="tooltip">The reason this deployment failed or passed.</p></dt><dd>Deployment passed because no finding blocks it.</dd></div>
+            <div class="field" tabindex="0"><dt>Data class<p class="hint" role="tooltip">How sensitive the service is: public, internal, or restricted. Restricted can turn a high finding into a block.</p></dt><dd>restricted</dd></div>
+            <div class="field" tabindex="0"><dt>Cache hit<p class="hint" role="tooltip">Yes or no. Yes means this commit was already scanned with the same rules, so the analyzers did not run again.</p></dt><dd>no</dd></div>
+            <div class="field" tabindex="0"><dt>System 2<p class="hint" role="tooltip">The model review. Not run means only the rule checks produced these findings.</p></dt><dd>not_run</dd></div>
+            <div class="field" tabindex="0"><dt>Corpus<p class="hint" role="tooltip">The set of known-vulnerable samples this scan was compared with.</p></dt><dd>4c1da21c019a251cdd212bfb80cb4fe5a27ed69c548c2a2f70a6acdb636db09a</dd></div>
+            <div class="field" tabindex="0"><dt>Commit<p class="hint" role="tooltip">The commit that was scanned.</p></dt><dd>5b9d1e4aa4c2</dd></div>
+          </dl>
+        </section>
+        <section class="card">
+          <h2>Summary</h2>
+          <p class="summary">18 medium.</p>
+        </section>
+      </div>
+      <aside class="card">
+        <h2>Analyzers</h2>
+        <ul class="analyzers"><li><span class="dot dot-ok" aria-hidden="true"></span><span class="an-name">eslint</span><span class="an-status">ok</span></li><li><span class="dot dot-ok" aria-hidden="true"></span><span class="an-name">templates</span><span class="an-status">ok</span></li><li><span class="dot dot-ok" aria-hidden="true"></span><span class="an-name">advisories</span><span class="an-status">ok</span></li><li><span class="dot dot-ok" aria-hidden="true"></span><span class="an-name">npm-audit</span><span class="an-status">ok</span></li><li><span class="dot dot-skipped" aria-hidden="true"></span><span class="an-name">gitleaks</span><span class="an-status">skipped</span></li><li><span class="dot dot-skipped" aria-hidden="true"></span><span class="an-name">trivy</span><span class="an-status">skipped</span></li></ul>
+      </aside>
+    </div>
+    <section class="findings card">
+      <h2>Findings <span id="finding-count" class="count"></span></h2>
+      <p class="note">Choose a risk rating to save it in the local database. The choices are informational, low, medium, high, and critical.</p>
+      <p id="risk-status" class="note" role="status"></p>
+      <p class="tools"><button type="button" id="clear-filters">Clear filters</button></p>
+      <div class="wrap">
+      <table id="findings">
+        <thead>
+          <tr><th data-sort="risk" aria-sort="none"><button type="button">Risk</button></th><th data-sort="class" aria-sort="none"><button type="button">Class</button></th><th data-sort="subclass" aria-sort="none"><button type="button">Subclass</button></th><th data-sort="finding" aria-sort="none"><button type="button">Finding</button></th><th data-sort="problem" aria-sort="none"><button type="button">Problem</button></th><th data-sort="where" aria-sort="none"><button type="button">Location</button></th><th data-sort="code" aria-sort="none"><button type="button">Code</button></th><th data-sort="confidence" aria-sort="none"><button type="button">Confidence (0–1)</button></th><th data-sort="next" aria-sort="none"><button type="button">Next step</button></th><th data-sort="gate" aria-sort="none"><button type="button">Pull Status</button></th></tr>
+          <tr class="filters"><th><select data-filter="risk" aria-label="Filter Risk"><option value="">All</option><option value="medium">medium</option></select></th><th><select data-filter="class" aria-label="Filter Class"><option value="">All</option><option value="Error handling">Error handling</option><option value="Injection">Injection</option><option value="Resource consumption">Resource consumption</option><option value="Security configuration">Security configuration</option><option value="Sensitive data">Sensitive data</option><option value="Session">Session</option></select></th><th><select data-filter="subclass" aria-label="Filter Subclass"><option value="">All</option><option value="Cross-site request forgery">Cross-site request forgery</option><option value="Framework fingerprint">Framework fingerprint</option><option value="Information disclosure">Information disclosure</option><option value="Insecure cookie">Insecure cookie</option><option value="Log injection">Log injection</option><option value="Regular expression denial of service">Regular expression denial of service</option><option value="Secret in web storage">Secret in web storage</option><option value="Sensitive data in logs">Sensitive data in logs</option></select></th><th><input data-filter="finding" aria-label="Filter Finding" placeholder="Filter"></th><th><input data-filter="problem" aria-label="Filter Problem" placeholder="Filter"></th><th><input data-filter="where" aria-label="Filter Location" placeholder="Filter"></th><th><input data-filter="code" aria-label="Filter Code" placeholder="Filter"></th><th><select data-filter="confidence" aria-label="Filter Confidence (0–1)"><option value="">All</option><option value="medium">medium</option></select></th><th><input data-filter="next" aria-label="Filter Next step" placeholder="Filter"></th><th><select data-filter="gate" aria-label="Filter Pull Status"><option value="">All</option><option value="comment">comment</option></select></th></tr>
+        </thead>
+        <tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Resource consumption" data-subclass="Regular expression denial of service" data-finding="Regular expression built from input Similar to changeEvent in ID4-vulnerable-app-master" data-problem="new RegExp receives a value that is not a fixed string. This line does not show request data. If a caller supplies the pattern, matching can consume the process until it stops responding." data-where="vulnerable-app-master/attacker-app/gulpfile.js:382 · changeEvent" data-code="var srcPattern = new RegExp('/.*(?=/' + config.source + ')/');" data-confidence="medium" data-confidence-rank="1" data-next="Confirm this expression is a fixed pattern" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="30b0dd36-aa83-4d96-99b1-cdc30a4af833" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Resource consumption</td>
+      <td class="subclass">Regular expression denial of service</td>
+      <td>Regular expression built from input<button type="button" class="similar-toggle" aria-expanded="false">Similar to changeEvent in ID4-vulnerable-app-master</button></td>
+      <td class="problem">new RegExp receives a value that is not a fixed string. This line does not show request data. If a caller supplies the pattern, matching can consume the process until it stops responding.</td>
+      <td class="where">vulnerable-app-master/attacker-app/gulpfile.js:382 · changeEvent</td>
+      <td class="code"><code>var srcPattern = new RegExp('/.*(?=/' + config.source + ')/');</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm this expression is a fixed pattern</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="similar-row" hidden><td colspan="10">
+      <table class="compare">
+        <thead><tr><th>Finding</th><th>Rating</th><th>Location</th><th>Code</th><th>Likeness</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Regular expression built from input</td>
+            <td>Resource consumption, medium</td>
+            <td>vulnerable-app-master/attacker-app/gulpfile.js:382 · changeEvent</td>
+            <td class="code"><code>var srcPattern = new RegExp('/.*(?=/' + config.source + ')/');</code></td>
+            <td></td>
+          </tr>
+          <tr>
+            <td>Regular expression built from input</td>
+            <td>Resource consumption, medium</td>
+            <td>ID4-vulnerable-app-master · vulnerable-app-master/gulpfile.js · changeEvent</td>
+            <td class="code"><code>var srcPattern = new RegExp('/.*(?=/' + config.source + ')/');</code></td>
+            <td>1 · patched twin 0.359</td>
+          </tr>
+        </tbody>
+      </table>
+      
+    </td></tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> new RegExp receives a non-literal. It looks for RegExp constructor.</p><p><span class="k">Clears when.</span> literal pattern is present.</p><p><span class="k">Cannot see.</span> A nested literal pattern is not stored or classified as catastrophic.</p><p>Similar to changeEvent in ID4-vulnerable-app-master. Likeness 1. Patched twin 0.359. This score does not set the gate.</p><p class="muted">CWE-1333, CWE-400 · detect-non-literal-regexp · waiver id b073adca13274d5d</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Error handling" data-subclass="Information disclosure" data-finding="Express app has no error handler" data-problem="This file starts Express and does not register an error-handling middleware. The default handler sends the stack when NODE_ENV is not production." data-where="vulnerable-app-master/attacker-app/src/server/app.js:5" data-code="var app = express();" data-confidence="medium" data-confidence-rank="1" data-next="Confirm an error handler sends a fixed message" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="e009eb1a-c99d-417e-856e-10d5c26f6b07" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Error handling</td>
+      <td class="subclass">Information disclosure</td>
+      <td>Express app has no error handler</td>
+      <td class="problem">This file starts Express and does not register an error-handling middleware. The default handler sends the stack when NODE_ENV is not production.</td>
+      <td class="where">vulnerable-app-master/attacker-app/src/server/app.js:5</td>
+      <td class="code"><code>var app = express();</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm an error handler sends a fixed message</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> The file calls express() and never passes a function with four parameters to use(). It looks for express().</p><p><span class="k">Clears when.</span> four-argument middleware is present.</p><p><span class="k">Cannot see.</span> An error handler registered in another file is not visible.</p><p>Clone likeness: 0.188. Patched twin: 0.219.</p><p class="muted">CWE-209 · js.error.middleware · waiver id a7edd771bbe7cd98</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Security configuration" data-subclass="Framework fingerprint" data-finding="X-Powered-By header left on" data-problem="This file starts Express and does not disable X-Powered-By. Responses advertise the framework." data-where="vulnerable-app-master/attacker-app/src/server/app.js:5" data-code="var app = express();" data-confidence="medium" data-confidence-rank="1" data-next="Confirm the framework name header is disabled" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="1e076a03-9927-4b6e-ad71-f71470d22a53" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Security configuration</td>
+      <td class="subclass">Framework fingerprint</td>
+      <td>X-Powered-By header left on</td>
+      <td class="problem">This file starts Express and does not disable X-Powered-By. Responses advertise the framework.</td>
+      <td class="where">vulnerable-app-master/attacker-app/src/server/app.js:5</td>
+      <td class="code"><code>var app = express();</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm the framework name header is disabled</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> The file calls express() and does not disable x-powered-by. It looks for express().</p><p><span class="k">Clears when.</span> disable x-powered-by is present.</p><p><span class="k">Cannot see.</span> A disable call in another file is not visible.</p><p>Clone likeness: 0.188. Patched twin: 0.219.</p><p class="muted">CWE-200 · js.config.powered-by · waiver id 4564e65fca5e9f7c</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Resource consumption" data-subclass="Regular expression denial of service" data-finding="Regular expression built from input Similar to changeEvent in ID4-vulnerable-app-master" data-problem="new RegExp receives a value that is not a fixed string. This line does not show request data. If a caller supplies the pattern, matching can consume the process until it stops responding." data-where="vulnerable-app-master/gulpfile.js:382 · changeEvent" data-code="var srcPattern = new RegExp('/.*(?=/' + config.source + ')/');" data-confidence="medium" data-confidence-rank="1" data-next="Confirm this expression is a fixed pattern" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="d0ae4d46-9af2-4717-b697-9e85822d3b6d" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Resource consumption</td>
+      <td class="subclass">Regular expression denial of service</td>
+      <td>Regular expression built from input<button type="button" class="similar-toggle" aria-expanded="false">Similar to changeEvent in ID4-vulnerable-app-master</button></td>
+      <td class="problem">new RegExp receives a value that is not a fixed string. This line does not show request data. If a caller supplies the pattern, matching can consume the process until it stops responding.</td>
+      <td class="where">vulnerable-app-master/gulpfile.js:382 · changeEvent</td>
+      <td class="code"><code>var srcPattern = new RegExp('/.*(?=/' + config.source + ')/');</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm this expression is a fixed pattern</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="similar-row" hidden><td colspan="10">
+      <table class="compare">
+        <thead><tr><th>Finding</th><th>Rating</th><th>Location</th><th>Code</th><th>Likeness</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Regular expression built from input</td>
+            <td>Resource consumption, medium</td>
+            <td>vulnerable-app-master/gulpfile.js:382 · changeEvent</td>
+            <td class="code"><code>var srcPattern = new RegExp('/.*(?=/' + config.source + ')/');</code></td>
+            <td></td>
+          </tr>
+          <tr>
+            <td>Regular expression built from input</td>
+            <td>Resource consumption, medium</td>
+            <td>ID4-vulnerable-app-master · vulnerable-app-master/gulpfile.js · changeEvent</td>
+            <td class="code"><code>var srcPattern = new RegExp('/.*(?=/' + config.source + ')/');</code></td>
+            <td>1 · patched twin 0.359</td>
+          </tr>
+        </tbody>
+      </table>
+      
+    </td></tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> new RegExp receives a non-literal. It looks for RegExp constructor.</p><p><span class="k">Clears when.</span> literal pattern is present.</p><p><span class="k">Cannot see.</span> A nested literal pattern is not stored or classified as catastrophic.</p><p>Similar to changeEvent in ID4-vulnerable-app-master. Likeness 1. Patched twin 0.359. This score does not set the gate.</p><p class="muted">CWE-1333, CWE-400 · detect-non-literal-regexp · waiver id 712ed44f6233cc4b</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Session" data-subclass="Cross-site request forgery" data-finding="State-changing route has no CSRF check Similar to updateProfile in ID4-vulnerable-app-master" data-problem="This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user." data-where="vulnerable-app-master/src/client/app/core/user.service.js:30 · updateProfile" data-code="return $http.post('/api/user/profile', profile)" data-confidence="medium" data-confidence-rank="1" data-next="Confirm a CSRF check is mounted for this route" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="5befe275-e62b-4899-b6f8-cc9dd3d69769" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Session</td>
+      <td class="subclass">Cross-site request forgery</td>
+      <td>State-changing route has no CSRF check<button type="button" class="similar-toggle" aria-expanded="false">Similar to updateProfile in ID4-vulnerable-app-master</button></td>
+      <td class="problem">This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user.</td>
+      <td class="where">vulnerable-app-master/src/client/app/core/user.service.js:30 · updateProfile</td>
+      <td class="code"><code>return $http.post('/api/user/profile', profile)</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm a CSRF check is mounted for this route</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="similar-row" hidden><td colspan="10">
+      <table class="compare">
+        <thead><tr><th>Finding</th><th>Rating</th><th>Location</th><th>Code</th><th>Likeness</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>State-changing route has no CSRF check</td>
+            <td>Session, medium</td>
+            <td>vulnerable-app-master/src/client/app/core/user.service.js:30 · updateProfile</td>
+            <td class="code"><code>return $http.post('/api/user/profile', profile)</code></td>
+            <td></td>
+          </tr>
+          <tr>
+            <td>State-changing route has no CSRF check</td>
+            <td>Session, medium</td>
+            <td>ID4-vulnerable-app-master · vulnerable-app-master/src/client/app/core/user.service.js · updateProfile</td>
+            <td class="code"><code>return $http.post('/api/user/profile', profile)</code></td>
+            <td>1 · patched twin 0.766</td>
+          </tr>
+        </tbody>
+      </table>
+      
+    </td></tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> The file registers a state-changing route and never mentions csrf or csurf. It looks for post, put, patch, or delete.</p><p><span class="k">Clears when.</span> csrf middleware is present.</p><p><span class="k">Cannot see.</span> A check mounted in another file is not visible. Every state-changing route in the file is reported.</p><p>Similar to updateProfile in ID4-vulnerable-app-master. Likeness 1. Patched twin 0.766. This score does not set the gate.</p><p class="muted">CWE-352 · js.csrf.missing · waiver id 341c4d3582be81e6</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Session" data-subclass="Cross-site request forgery" data-finding="State-changing route has no CSRF check Similar to logout in ID4-vulnerable-app-master" data-problem="This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user." data-where="vulnerable-app-master/src/client/app/core/user.service.js:38 · logout" data-code="return $http.post('/api/user/logout')" data-confidence="medium" data-confidence-rank="1" data-next="Confirm a CSRF check is mounted for this route" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="035eedee-9f30-41b0-a3f6-d5720e8918fe" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Session</td>
+      <td class="subclass">Cross-site request forgery</td>
+      <td>State-changing route has no CSRF check<button type="button" class="similar-toggle" aria-expanded="false">Similar to logout in ID4-vulnerable-app-master</button></td>
+      <td class="problem">This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user.</td>
+      <td class="where">vulnerable-app-master/src/client/app/core/user.service.js:38 · logout</td>
+      <td class="code"><code>return $http.post('/api/user/logout')</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm a CSRF check is mounted for this route</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="similar-row" hidden><td colspan="10">
+      <table class="compare">
+        <thead><tr><th>Finding</th><th>Rating</th><th>Location</th><th>Code</th><th>Likeness</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>State-changing route has no CSRF check</td>
+            <td>Session, medium</td>
+            <td>vulnerable-app-master/src/client/app/core/user.service.js:38 · logout</td>
+            <td class="code"><code>return $http.post('/api/user/logout')</code></td>
+            <td></td>
+          </tr>
+          <tr>
+            <td>State-changing route has no CSRF check</td>
+            <td>Session, medium</td>
+            <td>ID4-vulnerable-app-master · vulnerable-app-master/src/client/app/core/user.service.js · logout</td>
+            <td class="code"><code>return $http.post('/api/user/logout')</code></td>
+            <td>1 · patched twin 0.625</td>
+          </tr>
+        </tbody>
+      </table>
+      
+    </td></tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> The file registers a state-changing route and never mentions csrf or csurf. It looks for post, put, patch, or delete.</p><p><span class="k">Clears when.</span> csrf middleware is present.</p><p><span class="k">Cannot see.</span> A check mounted in another file is not visible. Every state-changing route in the file is reported.</p><p>Similar to logout in ID4-vulnerable-app-master. Likeness 1. Patched twin 0.625. This score does not set the gate.</p><p class="muted">CWE-352 · js.csrf.missing · waiver id b56c990b9e84472d</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Session" data-subclass="Cross-site request forgery" data-finding="State-changing route has no CSRF check Similar to login in ID4-vulnerable-app-master" data-problem="This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user." data-where="vulnerable-app-master/src/client/app/core/user.service.js:47 · login" data-code="return $http.post('/api/user/login')" data-confidence="medium" data-confidence-rank="1" data-next="Confirm a CSRF check is mounted for this route" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="5d5c4b94-f23e-4784-b537-7706b5b09365" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Session</td>
+      <td class="subclass">Cross-site request forgery</td>
+      <td>State-changing route has no CSRF check<button type="button" class="similar-toggle" aria-expanded="false">Similar to login in ID4-vulnerable-app-master</button></td>
+      <td class="problem">This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user.</td>
+      <td class="where">vulnerable-app-master/src/client/app/core/user.service.js:47 · login</td>
+      <td class="code"><code>return $http.post('/api/user/login')</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm a CSRF check is mounted for this route</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="similar-row" hidden><td colspan="10">
+      <table class="compare">
+        <thead><tr><th>Finding</th><th>Rating</th><th>Location</th><th>Code</th><th>Likeness</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>State-changing route has no CSRF check</td>
+            <td>Session, medium</td>
+            <td>vulnerable-app-master/src/client/app/core/user.service.js:47 · login</td>
+            <td class="code"><code>return $http.post('/api/user/login')</code></td>
+            <td></td>
+          </tr>
+          <tr>
+            <td>Cookie missing httpOnly, secure, and sameSite</td>
+            <td>Session, medium</td>
+            <td>ID4-vulnerable-app-master · vulnerable-app-master/src/server/routes.js · login</td>
+            <td class="code"><code>res.cookie('userAuthToken', randomNumber, {maxAge: 3600000, path: '/'});</code></td>
+            <td>1 · patched twin 0.625</td>
+          </tr>
+        </tbody>
+      </table>
+      
+    </td></tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> The file registers a state-changing route and never mentions csrf or csurf. It looks for post, put, patch, or delete.</p><p><span class="k">Clears when.</span> csrf middleware is present.</p><p><span class="k">Cannot see.</span> A check mounted in another file is not visible. Every state-changing route in the file is reported.</p><p>Similar to login in ID4-vulnerable-app-master. Likeness 1. Patched twin 0.625. This score does not set the gate.</p><p class="muted">CWE-352 · js.csrf.missing · waiver id cac87d8c5a5fc23f</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Sensitive data" data-subclass="Secret in web storage" data-finding="Secret stored in browser web storage Similar to login in ID4-vulnerable-app-master" data-problem="A token or password is written to localStorage or sessionStorage. Any script on the page can read it." data-where="vulnerable-app-master/src/client/app/layout/ht-top-nav.directive.js:57 · login" data-code="sessionStorage.setItem('userAuthToken', response);" data-confidence="medium" data-confidence-rank="1" data-next="Confirm this value is not a token or password" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="a0bbc5bf-f2af-4fe7-9a67-1fdc02e4ec6a" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Sensitive data</td>
+      <td class="subclass">Secret in web storage</td>
+      <td>Secret stored in browser web storage<button type="button" class="similar-toggle" aria-expanded="false">Similar to login in ID4-vulnerable-app-master</button></td>
+      <td class="problem">A token or password is written to localStorage or sessionStorage. Any script on the page can read it.</td>
+      <td class="where">vulnerable-app-master/src/client/app/layout/ht-top-nav.directive.js:57 · login</td>
+      <td class="code"><code>sessionStorage.setItem('userAuthToken', response);</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm this value is not a token or password</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="similar-row" hidden><td colspan="10">
+      <table class="compare">
+        <thead><tr><th>Finding</th><th>Rating</th><th>Location</th><th>Code</th><th>Likeness</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Secret stored in browser web storage</td>
+            <td>Sensitive data, medium</td>
+            <td>vulnerable-app-master/src/client/app/layout/ht-top-nav.directive.js:57 · login</td>
+            <td class="code"><code>sessionStorage.setItem('userAuthToken', response);</code></td>
+            <td></td>
+          </tr>
+          <tr>
+            <td>Secret stored in browser web storage</td>
+            <td>Sensitive data, medium</td>
+            <td>ID4-vulnerable-app-master · vulnerable-app-master/src/client/app/layout/ht-top-nav.directive.js · login</td>
+            <td class="code"><code>sessionStorage.setItem('userAuthToken', response);</code></td>
+            <td>1 · patched twin 0.641</td>
+          </tr>
+        </tbody>
+      </table>
+      
+    </td></tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> setItem's arguments name a token, password, secret, session, or jwt. It looks for localStorage.setItem or sessionStorage.setItem.</p><p><span class="k">Clears when.</span> memory held by the server session is present.</p><p><span class="k">Cannot see.</span> Platform keystores and mobile private files are out of scope.</p><p>Similar to login in ID4-vulnerable-app-master. Likeness 1. Patched twin 0.641. This score does not set the gate.</p><p class="muted">CWE-922 · js.browser.secret · waiver id fa1ef5aef3f1dc28</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Error handling" data-subclass="Information disclosure" data-finding="Express app has no error handler" data-problem="This file starts Express and does not register an error-handling middleware. The default handler sends the stack when NODE_ENV is not production." data-where="vulnerable-app-master/src/server/app.js:5" data-code="var app = express();" data-confidence="medium" data-confidence-rank="1" data-next="Confirm an error handler sends a fixed message" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="6dad0cd3-4f00-4b57-9a9f-d4d5e3e55b36" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Error handling</td>
+      <td class="subclass">Information disclosure</td>
+      <td>Express app has no error handler</td>
+      <td class="problem">This file starts Express and does not register an error-handling middleware. The default handler sends the stack when NODE_ENV is not production.</td>
+      <td class="where">vulnerable-app-master/src/server/app.js:5</td>
+      <td class="code"><code>var app = express();</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm an error handler sends a fixed message</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> The file calls express() and never passes a function with four parameters to use(). It looks for express().</p><p><span class="k">Clears when.</span> four-argument middleware is present.</p><p><span class="k">Cannot see.</span> An error handler registered in another file is not visible.</p><p>Clone likeness: 0.188. Patched twin: 0.203.</p><p class="muted">CWE-209 · js.error.middleware · waiver id cfe4bc715bc4dfb0</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Security configuration" data-subclass="Framework fingerprint" data-finding="X-Powered-By header left on" data-problem="This file starts Express and does not disable X-Powered-By. Responses advertise the framework." data-where="vulnerable-app-master/src/server/app.js:5" data-code="var app = express();" data-confidence="medium" data-confidence-rank="1" data-next="Confirm the framework name header is disabled" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="ecd90012-5764-4eea-a5d0-e63bdec7d8c6" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Security configuration</td>
+      <td class="subclass">Framework fingerprint</td>
+      <td>X-Powered-By header left on</td>
+      <td class="problem">This file starts Express and does not disable X-Powered-By. Responses advertise the framework.</td>
+      <td class="where">vulnerable-app-master/src/server/app.js:5</td>
+      <td class="code"><code>var app = express();</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm the framework name header is disabled</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> The file calls express() and does not disable x-powered-by. It looks for express().</p><p><span class="k">Clears when.</span> disable x-powered-by is present.</p><p><span class="k">Cannot see.</span> A disable call in another file is not visible.</p><p>Clone likeness: 0.188. Patched twin: 0.203.</p><p class="muted">CWE-200 · js.config.powered-by · waiver id 19f70ab2bea9b256</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Session" data-subclass="Cross-site request forgery" data-finding="State-changing route has no CSRF check" data-problem="This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user." data-where="vulnerable-app-master/src/server/routes.js:9" data-code="router.post('/user/login', login);" data-confidence="medium" data-confidence-rank="1" data-next="Confirm a CSRF check is mounted for this route" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="2db2ebcd-54b0-42cf-bde0-0afb101cd110" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Session</td>
+      <td class="subclass">Cross-site request forgery</td>
+      <td>State-changing route has no CSRF check</td>
+      <td class="problem">This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user.</td>
+      <td class="where">vulnerable-app-master/src/server/routes.js:9</td>
+      <td class="code"><code>router.post('/user/login', login);</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm a CSRF check is mounted for this route</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> The file registers a state-changing route and never mentions csrf or csurf. It looks for post, put, patch, or delete.</p><p><span class="k">Clears when.</span> csrf middleware is present.</p><p><span class="k">Cannot see.</span> A check mounted in another file is not visible. Every state-changing route in the file is reported.</p><p>Clone likeness: 0.375. Patched twin: 0.328.</p><p class="muted">CWE-352 · js.csrf.missing · waiver id 82b35e7e12111646</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Session" data-subclass="Cross-site request forgery" data-finding="State-changing route has no CSRF check" data-problem="This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user." data-where="vulnerable-app-master/src/server/routes.js:10" data-code="router.post('/user/logout', logout);" data-confidence="medium" data-confidence-rank="1" data-next="Confirm a CSRF check is mounted for this route" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="3db69176-4974-4b74-881c-4a10e361341f" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Session</td>
+      <td class="subclass">Cross-site request forgery</td>
+      <td>State-changing route has no CSRF check</td>
+      <td class="problem">This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user.</td>
+      <td class="where">vulnerable-app-master/src/server/routes.js:10</td>
+      <td class="code"><code>router.post('/user/logout', logout);</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm a CSRF check is mounted for this route</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> The file registers a state-changing route and never mentions csrf or csurf. It looks for post, put, patch, or delete.</p><p><span class="k">Clears when.</span> csrf middleware is present.</p><p><span class="k">Cannot see.</span> A check mounted in another file is not visible. Every state-changing route in the file is reported.</p><p>Clone likeness: 0.375. Patched twin: 0.328.</p><p class="muted">CWE-352 · js.csrf.missing · waiver id b188c46228142f69</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Session" data-subclass="Cross-site request forgery" data-finding="State-changing route has no CSRF check" data-problem="This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user." data-where="vulnerable-app-master/src/server/routes.js:12" data-code="router.post('/user/profile/', updateProfile);" data-confidence="medium" data-confidence-rank="1" data-next="Confirm a CSRF check is mounted for this route" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="7ea6cfaa-6278-4244-a57a-27d5c0fb521f" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Session</td>
+      <td class="subclass">Cross-site request forgery</td>
+      <td>State-changing route has no CSRF check</td>
+      <td class="problem">This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user.</td>
+      <td class="where">vulnerable-app-master/src/server/routes.js:12</td>
+      <td class="code"><code>router.post('/user/profile/', updateProfile);</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm a CSRF check is mounted for this route</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> The file registers a state-changing route and never mentions csrf or csurf. It looks for post, put, patch, or delete.</p><p><span class="k">Clears when.</span> csrf middleware is present.</p><p><span class="k">Cannot see.</span> A check mounted in another file is not visible. Every state-changing route in the file is reported.</p><p>Clone likeness: 0.375. Patched twin: 0.328.</p><p class="muted">CWE-352 · js.csrf.missing · waiver id 4bf29e656eb083c4</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Injection" data-subclass="Log injection" data-finding="Log injection" data-problem="Request data is written into a log line. A newline in that value can forge later log entries." data-where="vulnerable-app-master/src/server/routes.js:28 · search" data-code="console.log(req.query.searchTerm);" data-confidence="medium" data-confidence-rank="1" data-next="Confirm control characters are stripped before this write" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="26fd38de-1bec-44b8-ab06-443768eb3cfd" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Injection</td>
+      <td class="subclass">Log injection</td>
+      <td>Log injection</td>
+      <td class="problem">Request data is written into a log line. A newline in that value can forge later log entries.</td>
+      <td class="where">vulnerable-app-master/src/server/routes.js:28 · search</td>
+      <td class="code"><code>console.log(req.query.searchTerm);</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm control characters are stripped before this write</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> Request data reaches a header, mail, log, or CSV call. It looks for setHeader, sendMail, log, or writeCsv.</p><p><span class="k">Clears when.</span> stripCrlf, structured log, or CSV escape is present.</p><p><span class="k">Cannot see.</span> Passwords, tokens, and req.body are reported by the sensitive-log rule instead.</p><p>Clone likeness: 1. Patched twin: 0.875.</p><p class="muted">CWE-93, CWE-117 · js.control.char · waiver id c25e40a28f6c94c0</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Injection" data-subclass="Log injection" data-finding="Log injection Similar to getProfile in ID4-vulnerable-app-master" data-problem="Request data is written into a log line. A newline in that value can forge later log entries." data-where="vulnerable-app-master/src/server/routes.js:33 · getProfile" data-code="console.log('User Requesting Read: ', req.cookies.userAuthToken);" data-confidence="medium" data-confidence-rank="1" data-next="Confirm control characters are stripped before this write" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="08a06174-90c6-4a03-95df-f930b8a89217" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Injection</td>
+      <td class="subclass">Log injection</td>
+      <td>Log injection<button type="button" class="similar-toggle" aria-expanded="false">Similar to getProfile in ID4-vulnerable-app-master</button></td>
+      <td class="problem">Request data is written into a log line. A newline in that value can forge later log entries.</td>
+      <td class="where">vulnerable-app-master/src/server/routes.js:33 · getProfile</td>
+      <td class="code"><code>console.log('User Requesting Read: ', req.cookies.userAuthToken);</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm control characters are stripped before this write</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="similar-row" hidden><td colspan="10">
+      <table class="compare">
+        <thead><tr><th>Finding</th><th>Rating</th><th>Location</th><th>Code</th><th>Likeness</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Log injection</td>
+            <td>Injection, medium</td>
+            <td>vulnerable-app-master/src/server/routes.js:33 · getProfile</td>
+            <td class="code"><code>console.log('User Requesting Read: ', req.cookies.userAuthToken);</code></td>
+            <td></td>
+          </tr>
+          <tr>
+            <td>Log injection</td>
+            <td>Injection, medium</td>
+            <td>ID4-vulnerable-app-master · vulnerable-app-master/src/server/routes.js · getProfile</td>
+            <td class="code"><code>console.log('Profile found: ', data.profile[req.cookies.userAuthToken]);</code></td>
+            <td>1 · patched twin 0.578</td>
+          </tr>
+        </tbody>
+      </table>
+      
+    </td></tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> Request data reaches a header, mail, log, or CSV call. It looks for setHeader, sendMail, log, or writeCsv.</p><p><span class="k">Clears when.</span> stripCrlf, structured log, or CSV escape is present.</p><p><span class="k">Cannot see.</span> Passwords, tokens, and req.body are reported by the sensitive-log rule instead.</p><p>Similar to getProfile in ID4-vulnerable-app-master. Likeness 1. Patched twin 0.578. This score does not set the gate.</p><p class="muted">CWE-93, CWE-117 · js.control.char · waiver id 07fe4443707dec3a</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Injection" data-subclass="Log injection" data-finding="Log injection Similar to getProfile in ID4-vulnerable-app-master" data-problem="Request data is written into a log line. A newline in that value can forge later log entries." data-where="vulnerable-app-master/src/server/routes.js:34 · getProfile" data-code="console.log('Profile found: ', data.profile[req.cookies.userAuthToken]);" data-confidence="medium" data-confidence-rank="1" data-next="Confirm control characters are stripped before this write" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="3026e85b-f1a2-448c-b402-605f9979abab" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Injection</td>
+      <td class="subclass">Log injection</td>
+      <td>Log injection<button type="button" class="similar-toggle" aria-expanded="false">Similar to getProfile in ID4-vulnerable-app-master</button></td>
+      <td class="problem">Request data is written into a log line. A newline in that value can forge later log entries.</td>
+      <td class="where">vulnerable-app-master/src/server/routes.js:34 · getProfile</td>
+      <td class="code"><code>console.log('Profile found: ', data.profile[req.cookies.userAuthToken]);</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm control characters are stripped before this write</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="similar-row" hidden><td colspan="10">
+      <table class="compare">
+        <thead><tr><th>Finding</th><th>Rating</th><th>Location</th><th>Code</th><th>Likeness</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Log injection</td>
+            <td>Injection, medium</td>
+            <td>vulnerable-app-master/src/server/routes.js:34 · getProfile</td>
+            <td class="code"><code>console.log('Profile found: ', data.profile[req.cookies.userAuthToken]);</code></td>
+            <td></td>
+          </tr>
+          <tr>
+            <td>Log injection</td>
+            <td>Injection, medium</td>
+            <td>ID4-vulnerable-app-master · vulnerable-app-master/src/server/routes.js · getProfile</td>
+            <td class="code"><code>console.log('Profile found: ', data.profile[req.cookies.userAuthToken]);</code></td>
+            <td>1 · patched twin 0.578</td>
+          </tr>
+        </tbody>
+      </table>
+      
+    </td></tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> Request data reaches a header, mail, log, or CSV call. It looks for setHeader, sendMail, log, or writeCsv.</p><p><span class="k">Clears when.</span> stripCrlf, structured log, or CSV escape is present.</p><p><span class="k">Cannot see.</span> Passwords, tokens, and req.body are reported by the sensitive-log rule instead.</p><p>Similar to getProfile in ID4-vulnerable-app-master. Likeness 1. Patched twin 0.578. This score does not set the gate.</p><p class="muted">CWE-93, CWE-117 · js.control.char · waiver id df7ebe2b02809540</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Sensitive data" data-subclass="Sensitive data in logs" data-finding="Password, token, or request body written to a log Similar to updateProfile in ID4-vulnerable-app-master" data-problem="A password, token, or the request body is written to a log. Anyone who can read the logs can reuse that secret." data-where="vulnerable-app-master/src/server/routes.js:42 · updateProfile" data-code="console.log('Updating user profile to: ', req.body);" data-confidence="medium" data-confidence-rank="1" data-next="Confirm this log does not record a credential or the request body" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="c4c17d84-9864-441c-802f-1e81738d54ae" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Sensitive data</td>
+      <td class="subclass">Sensitive data in logs</td>
+      <td>Password, token, or request body written to a log<button type="button" class="similar-toggle" aria-expanded="false">Similar to updateProfile in ID4-vulnerable-app-master</button></td>
+      <td class="problem">A password, token, or the request body is written to a log. Anyone who can read the logs can reuse that secret.</td>
+      <td class="where">vulnerable-app-master/src/server/routes.js:42 · updateProfile</td>
+      <td class="code"><code>console.log('Updating user profile to: ', req.body);</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm this log does not record a credential or the request body</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="similar-row" hidden><td colspan="10">
+      <table class="compare">
+        <thead><tr><th>Finding</th><th>Rating</th><th>Location</th><th>Code</th><th>Likeness</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Password, token, or request body written to a log</td>
+            <td>Sensitive data, medium</td>
+            <td>vulnerable-app-master/src/server/routes.js:42 · updateProfile</td>
+            <td class="code"><code>console.log('Updating user profile to: ', req.body);</code></td>
+            <td></td>
+          </tr>
+          <tr>
+            <td>Password, token, or request body written to a log</td>
+            <td>Sensitive data, medium</td>
+            <td>ID4-vulnerable-app-master · vulnerable-app-master/src/server/routes.js · updateProfile</td>
+            <td class="code"><code>console.log('Updating user profile to: ', req.body);</code></td>
+            <td>1 · patched twin 0.328</td>
+          </tr>
+        </tbody>
+      </table>
+      
+    </td></tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> A log call receives password, token, secret, authorization, or req.body. It looks for log, info, warn, or error.</p><p><span class="k">Clears when.</span> log the identifier, not the secret is present.</p><p><span class="k">Cannot see.</span> A line already reported as a credential pattern is not reported again.</p><p>Similar to updateProfile in ID4-vulnerable-app-master. Likeness 1. Patched twin 0.328. This score does not set the gate.</p><p class="muted">CWE-532 · js.sensitive.log · waiver id 15756d7c62e33ff3</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Session" data-subclass="Insecure cookie" data-finding="Cookie missing httpOnly, secure, and sameSite Similar to login in ID4-vulnerable-app-master" data-problem="The cookie is set without httpOnly, secure, and sameSite. Script on the page can read it, and the browser may send it on an insecure or cross-site request." data-where="vulnerable-app-master/src/server/routes.js:62 · login" data-code="res.cookie('userAuthToken', randomNumber, {maxAge: 3600000, path: '/'});" data-confidence="medium" data-confidence-rank="1" data-next="Confirm this cookie sets httpOnly, secure, and sameSite" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="11f53fed-0a4c-4fd4-afca-0c3ce91f8732" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Session</td>
+      <td class="subclass">Insecure cookie</td>
+      <td>Cookie missing httpOnly, secure, and sameSite<button type="button" class="similar-toggle" aria-expanded="false">Similar to login in ID4-vulnerable-app-master</button></td>
+      <td class="problem">The cookie is set without httpOnly, secure, and sameSite. Script on the page can read it, and the browser may send it on an insecure or cross-site request.</td>
+      <td class="where">vulnerable-app-master/src/server/routes.js:62 · login</td>
+      <td class="code"><code>res.cookie('userAuthToken', randomNumber, {maxAge: 3600000, path: '/'});</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm this cookie sets httpOnly, secure, and sameSite</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="similar-row" hidden><td colspan="10">
+      <table class="compare">
+        <thead><tr><th>Finding</th><th>Rating</th><th>Location</th><th>Code</th><th>Likeness</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Cookie missing httpOnly, secure, and sameSite</td>
+            <td>Session, medium</td>
+            <td>vulnerable-app-master/src/server/routes.js:62 · login</td>
+            <td class="code"><code>res.cookie('userAuthToken', randomNumber, {maxAge: 3600000, path: '/'});</code></td>
+            <td></td>
+          </tr>
+          <tr>
+            <td>Cookie missing httpOnly, secure, and sameSite</td>
+            <td>Session, medium</td>
+            <td>ID4-vulnerable-app-master · vulnerable-app-master/src/server/routes.js · login</td>
+            <td class="code"><code>res.cookie('userAuthToken', randomNumber, {maxAge: 3600000, path: '/'});</code></td>
+            <td>1 · patched twin 0.344</td>
+          </tr>
+        </tbody>
+      </table>
+      
+    </td></tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> res.cookie is called with none of the three flags. It looks for res.cookie.</p><p><span class="k">Clears when.</span> httpOnly, secure, or sameSite is present.</p><p><span class="k">Cannot see.</span> Session fixation, idle timeout, logout, and concurrent sessions need a session store.</p><p>Similar to login in ID4-vulnerable-app-master. Likeness 1. Patched twin 0.344. This score does not set the gate.</p><p class="muted">CWE-614, CWE-1004 · js.cookie.flags · waiver id b6813d718411979a</p></div>
+    </details></td></tr>
+    </tbody>
+      </table>
+      </div>
+    </section>
+    <section class="charts">
+      <div class="chart card">
+    <h2>Risk</h2>
+    <p class="note">Findings in each risk classification.</p>
+    <ul class="bars"><li>
+      <span class="bar-label">critical</span>
+      <span class="bar-track"><span class="bar-fill fill-critical" style="width:0%"></span></span>
+      <span class="bar-count">0</span>
+    </li><li>
+      <span class="bar-label">high</span>
+      <span class="bar-track"><span class="bar-fill fill-high" style="width:0%"></span></span>
+      <span class="bar-count">0</span>
+    </li><li>
+      <span class="bar-label">medium</span>
+      <span class="bar-track"><span class="bar-fill fill-medium" style="width:100%"></span></span>
+      <span class="bar-count">18</span>
+    </li><li>
+      <span class="bar-label">low</span>
+      <span class="bar-track"><span class="bar-fill fill-low" style="width:0%"></span></span>
+      <span class="bar-count">0</span>
+    </li></ul>
+  </div>
+      <div class="chart card">
+    <h2>Pull status</h2>
+    <p class="note">Findings that block, comment, or were cleared.</p>
+    <ul class="bars"><li>
+      <span class="bar-label">block</span>
+      <span class="bar-track"><span class="bar-fill fill-block" style="width:0%"></span></span>
+      <span class="bar-count">0</span>
+    </li><li>
+      <span class="bar-label">comment</span>
+      <span class="bar-track"><span class="bar-fill fill-comment" style="width:100%"></span></span>
+      <span class="bar-count">18</span>
+    </li><li>
+      <span class="bar-label">cleared</span>
+      <span class="bar-track"><span class="bar-fill fill-clear" style="width:0%"></span></span>
+      <span class="bar-count">0</span>
+    </li></ul>
+  </div>
+    </section>
+    <section class="history card" id="report-archive">
+    <h2>Report archive</h2>
+    <p class="note">Earlier versions of this report, with the date and time each one was saved.</p>
+    <p class="muted">No earlier versions yet.</p>
+  </section>
+  </div>
+  <script>
+    (function () {
+      document.querySelectorAll(".risk-select").forEach((select) => {
+        select.dataset.saved = select.value;
+        select.addEventListener("change", () => {
+          const status = document.getElementById("risk-status");
+          const url = document.body.getAttribute("data-rating-url") || "";
+          if (!url) {
+            select.value = select.dataset.saved || select.value;
+            if (status) status.textContent = "This report has no save address.";
+            return;
+          }
+          if (status) status.textContent = "Saving rating…";
+          select.disabled = true;
+          const form = document.createElement("form");
+          form.method = "POST";
+          form.action = url;
+          const fields = {
+            finding_id: select.getAttribute("data-finding") || "",
+            risk_rating: select.value,
+            role: document.body.getAttribute("data-role") || "",
+            token: document.body.getAttribute("data-rating-token") || "",
+          };
+          for (const [name, value] of Object.entries(fields)) {
+            const input = document.createElement("input");
+            input.type = "hidden";
+            input.name = name;
+            input.value = value;
+            form.appendChild(input);
+          }
+          document.body.appendChild(form);
+          form.submit();
+        });
+      });
+      const table = document.getElementById("findings");
+      if (!table) return;
+      table.querySelectorAll(".similar-toggle").forEach((button) => {
+        button.addEventListener("click", () => {
+          const panel = button.closest("tbody") && button.closest("tbody").querySelector(".similar-row");
+          if (!panel) return;
+          const open = panel.hasAttribute("hidden");
+          panel.toggleAttribute("hidden", !open);
+          button.setAttribute("aria-expanded", open ? "true" : "false");
+        });
+      });
+      const headers = [...table.querySelectorAll("thead th[data-sort]")];
+      const count = document.getElementById("finding-count");
+      const clear = document.getElementById("clear-filters");
+      let sortKey = "risk";
+      let sortDir = 1;
+      function groups() {
+        return [...table.querySelectorAll("tbody.finding")];
+      }
+      function compare(left, right) {
+        const leftRank = left.getAttribute("data-" + sortKey + "-rank");
+        const rightRank = right.getAttribute("data-" + sortKey + "-rank");
+        if (leftRank !== null && rightRank !== null) return (Number(leftRank) - Number(rightRank)) * sortDir;
+        const leftText = left.getAttribute("data-" + sortKey) || "";
+        const rightText = right.getAttribute("data-" + sortKey) || "";
+        return leftText.localeCompare(rightText, undefined, { numeric: true, sensitivity: "base" }) * sortDir;
+      }
+      function apply() {
+        const filters = {};
+        table.querySelectorAll("[data-filter]").forEach((input) => {
+          filters[input.getAttribute("data-filter")] = input.value.trim().toLowerCase();
+        });
+        const rows = groups().sort(compare);
+        let shown = 0;
+        for (const row of rows) {
+          table.appendChild(row);
+          const hide = Object.entries(filters).some(([key, query]) => {
+            if (!query) return false;
+            return !(row.getAttribute("data-" + key) || "").toLowerCase().includes(query);
+          });
+          row.hidden = hide;
+          if (!hide) shown += 1;
+        }
+        if (count) {
+          const total = rows.length;
+          count.textContent = shown === total ? (total === 1 ? "1 finding" : total + " findings") : "Showing " + shown + " of " + total;
+        }
+        headers.forEach((headerCell) => {
+          const key = headerCell.getAttribute("data-sort");
+          headerCell.setAttribute("aria-sort", key === sortKey ? (sortDir === 1 ? "ascending" : "descending") : "none");
+        });
+      }
+      headers.forEach((headerCell) => {
+        const button = headerCell.querySelector("button");
+        if (!button) return;
+        button.addEventListener("click", () => {
+          const key = headerCell.getAttribute("data-sort");
+          if (sortKey === key) sortDir *= -1;
+          else {
+            sortKey = key;
+            sortDir = 1;
+          }
+          apply();
+        });
+      });
+      table.querySelectorAll("[data-filter]").forEach((input) => {
+        input.addEventListener("input", apply);
+        input.addEventListener("change", apply);
+      });
+      if (clear) {
+        clear.addEventListener("click", () => {
+          table.querySelectorAll("[data-filter]").forEach((input) => { input.value = ""; });
+          apply();
+        });
+      }
+      apply();
+    }());
+  </script>
+</body>
+</html>

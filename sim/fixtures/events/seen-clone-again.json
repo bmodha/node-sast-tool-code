@@ -1,0 +1,11 @@
+{
+  "delivery_id": "evt-seen-clone-2",
+  "repo_id": "repo-seen-clone",
+  "repo_name": "seen-clone",
+  "service_id": "svc-seen-clone",
+  "service_name": "seen-clone",
+  "owner_team_id": "team-checkout",
+  "data_class": "internal",
+  "commit_sha": "seen333",
+  "source_dir": "fixtures/repos/seen-clone"
+}

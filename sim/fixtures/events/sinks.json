@@ -1,0 +1,11 @@
+{
+  "delivery_id": "evt-sinks-1",
+  "repo_id": "repo-sinks",
+  "repo_name": "sinks",
+  "service_id": "svc-sinks",
+  "service_name": "sinks",
+  "owner_team_id": "team-checkout",
+  "data_class": "internal",
+  "commit_sha": "sinks555",
+  "source_dir": "fixtures/repos/sinks"
+}

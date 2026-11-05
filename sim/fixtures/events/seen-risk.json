@@ -1,0 +1,11 @@
+{
+  "delivery_id": "evt-seen-risk-1",
+  "repo_id": "repo-seen-risk",
+  "repo_name": "seen-risk",
+  "service_id": "svc-seen-risk",
+  "service_name": "seen-risk",
+  "owner_team_id": "team-checkout",
+  "data_class": "internal",
+  "commit_sha": "seen111",
+  "source_dir": "fixtures/repos/seen-risk"
+}

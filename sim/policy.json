@@ -1,0 +1,33 @@
+{
+  "likeness_threshold": 0.8,
+  "patched_twin_max": 0.8,
+  "max_files": 40,
+  "max_file_bytes": 100000,
+  "max_total_bytes": 200000,
+  "external_max_files": 2000,
+  "external_max_total_bytes": 20000000,
+  "max_comparisons_per_unit": 32,
+  "rulepack_version": "sim-eslint-1",
+  "lint_ignore": ["*.min.js", "public/assets/", "vendor/", "dist/"],
+  "high_precision_rules": [
+    "js.sqli.string-concat",
+    "js.xss.dangerous-html",
+    "js.eval.member",
+    "js.deser.unserialize",
+    "js.redirect.request",
+    "js.xml.entities",
+    "detect-eval-with-expression",
+    "detect-child-process",
+    "js.query.nosql",
+    "js.query.ldap",
+    "js.ssrf.fetch",
+    "js.tls.verify",
+    "js.template.render",
+    "gitleaks",
+    "trivy-critical"
+  ],
+  "noisy_rules": ["js.sql.literal"],
+  "block_on_secret": true,
+  "block_on_critical_iac": true,
+  "block_high_precision_on_restricted": true
+}

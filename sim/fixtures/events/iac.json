@@ -1,0 +1,11 @@
+{
+  "delivery_id": "evt-iac-1",
+  "repo_id": "repo-iac",
+  "repo_name": "iac-sample",
+  "service_id": "svc-iac",
+  "service_name": "iac-sample",
+  "owner_team_id": "team-platform",
+  "data_class": "internal",
+  "commit_sha": "iac777",
+  "source_dir": "fixtures/repos/iac-sample"
+}

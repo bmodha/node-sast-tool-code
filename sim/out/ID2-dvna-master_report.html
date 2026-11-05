@@ -1,0 +1,1692 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Code review simulation</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0d1117;
+      --card: #161b22;
+      --ink: #e6edf3;
+      --muted: #8b949e;
+      --line: #30363d;
+      --soft: #21262d;
+      --accent: #58a6ff;
+      --accent-soft: #1c2d41;
+      --panel: #0d1117;
+      --critical: #f85149;
+      --high: #db6d28;
+      --medium: #d29922;
+      --low: #388bfd;
+      --info: #6e7681;
+      --clear: #3fb950;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: "Segoe UI", system-ui, sans-serif;
+      margin: 0;
+      color: var(--ink);
+      background: var(--bg);
+      line-height: 1.45;
+    }
+    .page { max-width: 1440px; margin: 0 auto; padding: 1.4rem 1.25rem 2.5rem; }
+    h1 { font-size: 1.45rem; font-weight: 650; letter-spacing: -0.02em; margin: 0 0 0.9rem; }
+    h2 { font-size: 1.02rem; font-weight: 650; color: var(--ink); margin: 0 0 0.45rem; }
+    h2 .count { font-size: 0.82rem; font-weight: 500; color: var(--muted); margin-left: 0.35rem; }
+    a { color: var(--accent); }
+    .top {
+      display: grid;
+      grid-template-columns: minmax(0, 1.55fr) minmax(16rem, 0.72fr);
+      gap: 0.9rem;
+      align-items: stretch;
+    }
+    .lead { display: grid; gap: 0.85rem; align-content: start; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 0.95rem 1.05rem 1.05rem;
+    }
+    .saved { margin: 0 0 0.75rem; color: var(--muted); font-size: 0.86rem; }
+    .meta { display: grid; gap: 0.32rem; margin: 0; }
+    .meta .field { position: relative; display: grid; grid-template-columns: 7.6rem minmax(0, 1fr); gap: 0.75rem; align-items: start; cursor: help; }
+    .field:hover, .field:focus-within { z-index: 5; }
+    .meta dt {
+      color: var(--muted);
+      font-size: 0.82rem;
+      padding-top: 0.08rem;
+      width: fit-content;
+      border-bottom: 1px dotted var(--muted);
+      cursor: help;
+    }
+    .meta dd { margin: 0; overflow-wrap: anywhere; }
+    .hint {
+      display: none;
+      position: absolute;
+      z-index: 4;
+      left: 0;
+      top: calc(100% + 0.2rem);
+      width: max-content;
+      max-width: 22rem;
+      margin: 0;
+      padding: 0.45rem 0.6rem;
+      background: #1c2128;
+      color: var(--ink);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      font-size: 0.78rem;
+      line-height: 1.35;
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55);
+    }
+    .field:hover .hint, .field:focus-within .hint { display: block; }
+    .summary { margin: 0; }
+    .analyzers { list-style: none; margin: 0; padding: 0; }
+    .analyzers li {
+      display: grid;
+      grid-template-columns: 0.55rem 1fr;
+      column-gap: 0.55rem;
+      row-gap: 0.05rem;
+      padding: 0.4rem 0;
+      border-bottom: 1px solid var(--soft);
+    }
+    .analyzers li:last-child { border-bottom: 0; padding-bottom: 0; }
+    .an-name { font-weight: 650; }
+    .an-status { grid-column: 2; color: var(--muted); font-size: 0.84rem; }
+    .empty-analyzer { color: var(--muted); display: block; }
+    .dot { width: 0.5rem; height: 0.5rem; border-radius: 50%; margin-top: 0.38rem; }
+    .dot-ok { background: var(--clear); }
+    .dot-skipped { background: var(--info); }
+    .dot-other { background: var(--accent); }
+    .findings, .history, .charts { margin-top: 0.9rem; }
+    .charts { display: grid; grid-template-columns: 1fr 1fr; gap: 0.9rem; }
+    .note { margin: 0 0 0.75rem; color: var(--muted); font-size: 0.86rem; }
+    .history ul { margin: 0; padding-left: 1.15rem; }
+    .history li { margin: 0.28rem 0; }
+    .back { margin: 0.7rem 0 0; }
+    .tools { margin: 0 0 0.65rem; }
+    .tools button, th button {
+      font: inherit;
+      color: var(--ink);
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 0.28rem 0.6rem;
+      cursor: pointer;
+    }
+    .tools button:hover, th button:hover { background: var(--accent-soft); }
+    th button { border: 0; background: none; border-radius: 6px; padding: 0; font-weight: 700; color: inherit; text-align: left; }
+    .wrap { overflow-x: auto; container-type: inline-size; }
+    table { border-collapse: collapse; width: 100%; min-width: 68rem; background: var(--card); }
+    .problem { min-width: 12rem; }
+    .code { min-width: 18rem; }
+    td:last-child { min-width: 6.2rem; }
+    th, td { padding: 0.48rem 0.55rem; text-align: left; font-size: 0.86rem; vertical-align: top; border-bottom: 1px solid var(--soft); }
+    thead th { background: var(--soft); color: var(--muted); }
+    th[aria-sort="ascending"] button::after { content: " ↑"; }
+    th[aria-sort="descending"] button::after { content: " ↓"; }
+    .filters th { background: var(--card); }
+    .filters input, .filters select {
+      width: 100%;
+      box-sizing: border-box;
+      font: inherit;
+      font-size: 0.75rem;
+      padding: 0.22rem 0.3rem;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--panel);
+      color: var(--ink);
+    }
+    tbody.finding:hover td { background: var(--soft); }
+    code {
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 0.8rem;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      background: var(--panel);
+      color: var(--ink);
+      border-radius: 4px;
+      padding: 0.12rem 0.28rem;
+    }
+    .where { white-space: normal; }
+    .muted { color: var(--muted); font-size: 0.8rem; }
+    .chip {
+      display: inline-block;
+      padding: 0.08rem 0.48rem;
+      border-radius: 999px;
+      font-weight: 650;
+      font-size: 0.78rem;
+      text-transform: capitalize;
+      letter-spacing: 0.01em;
+    }
+    .check { text-transform: none; }
+    .risk-critical, .status-block, .check-failure { background: #3d1214; color: #ff7b72; }
+    .risk-high { background: #3d220c; color: #f0883e; }
+    .risk-medium, .status-comment { background: #3d2e0a; color: #e3b341; }
+    .risk-low { background: #0d2847; color: #79c0ff; }
+    .status-clear, .check-success { background: #0f2d1a; color: #56d364; }
+    .risk-info { background: #21262d; color: #8b949e; }
+    .risk-select {
+      font: inherit;
+      font-weight: 650;
+      font-size: 0.78rem;
+      border-radius: 999px;
+      border: 1px solid transparent;
+      padding: 0.12rem 0.35rem;
+      cursor: pointer;
+      max-width: 9.8rem;
+    }
+    .risk-select:disabled { cursor: progress; opacity: 0.7; }
+    .subclass { font-weight: 650; }
+    tbody.finding[hidden] { display: none; }
+    details { margin: 0; }
+    summary { cursor: pointer; color: var(--ink); }
+    .similar-toggle {
+      display: block;
+      margin-top: 0.28rem;
+      padding: 0;
+      border: 0;
+      background: none;
+      color: var(--muted);
+      font: inherit;
+      font-size: 0.8rem;
+      text-align: left;
+      cursor: pointer;
+      width: fit-content;
+    }
+    .similar-toggle:hover { color: var(--accent); }
+    .similar-row > td { background: #10151c; padding: 0.75rem 0.7rem 0.9rem; }
+    table.compare {
+      min-width: 0;
+      width: min(100%, calc(100cqw - 1.4rem));
+      position: sticky;
+      left: 0.7rem;
+      background: transparent;
+    }
+    table.compare th:nth-child(4), table.compare td:nth-child(4) { width: 46%; }
+    table.compare th:nth-child(5), table.compare td:nth-child(5) { white-space: nowrap; }
+    .compare-note { margin: 0.45rem 0 0; }
+    .triage { display: grid; gap: 0.35rem; margin-top: 0.45rem; }
+    .triage p { margin: 0; }
+    .triage .k { font-weight: 650; }
+    .bars { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.55rem; }
+    .bars li { display: grid; grid-template-columns: 7.6rem 1fr 2rem; gap: 0.6rem; align-items: center; }
+    .bar-label { color: var(--muted); font-size: 0.88rem; }
+    .bar-track { height: 0.72rem; background: var(--soft); border-radius: 999px; overflow: hidden; }
+    .bar-fill { display: block; height: 100%; border-radius: 999px; min-width: 0; }
+    .bar-count { text-align: right; font-variant-numeric: tabular-nums; font-weight: 650; }
+    .fill-critical, .fill-block { background: var(--critical); }
+    .fill-high { background: var(--high); }
+    .fill-medium, .fill-comment { background: var(--medium); }
+    .fill-low { background: var(--low); }
+    .fill-clear { background: var(--clear); }
+    .fill-info { background: var(--info); }
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    @media (max-width: 860px) {
+      .top, .charts { grid-template-columns: 1fr; }
+      .where { white-space: normal; }
+    }
+  </style>
+</head>
+<body data-role="appsec" data-rating-url="" data-rating-token="">
+  <div class="page">
+    <h1>Code review simulation</h1>
+    <div class="top">
+      <div class="lead">
+        <section class="card">
+          <dl class="meta">
+            <div class="field" tabindex="0"><dt>Repository<p class="hint" role="tooltip">The repository this scan reviewed.</p></dt><dd>ID2-dvna-master</dd></div>
+            <div class="field" tabindex="0"><dt>Report<p class="hint" role="tooltip">This scan's report file. Earlier versions are listed at the bottom with the date and time they were saved.</p></dt><dd>ID2-dvna-master_report.html</dd></div>
+            <div class="field" tabindex="0"><dt>Role<p class="hint" role="tooltip">Who is viewing this report. AppSec also sees why a check fired and redacted secret previews.</p></dt><dd>appsec</dd></div>
+            <div class="field" tabindex="0"><dt>Deployment<p class="hint" role="tooltip">Failed or Passed. Failed means at least one finding blocks deployment. Passed means none do.</p></dt><dd><span class="chip check check-failure">Failed</span></dd></div>
+            <div class="field" tabindex="0"><dt>Why<p class="hint" role="tooltip">The reason this deployment failed or passed.</p></dt><dd>Deployment failed because 17 findings block it.</dd></div>
+            <div class="field" tabindex="0"><dt>Data class<p class="hint" role="tooltip">How sensitive the service is: public, internal, or restricted. Restricted can turn a high finding into a block.</p></dt><dd>restricted</dd></div>
+            <div class="field" tabindex="0"><dt>Cache hit<p class="hint" role="tooltip">Yes or no. Yes means this commit was already scanned with the same rules, so the analyzers did not run again.</p></dt><dd>no</dd></div>
+            <div class="field" tabindex="0"><dt>System 2<p class="hint" role="tooltip">The model review. Not run means only the rule checks produced these findings.</p></dt><dd>not_run</dd></div>
+            <div class="field" tabindex="0"><dt>Corpus<p class="hint" role="tooltip">The set of known-vulnerable samples this scan was compared with.</p></dt><dd>4c1da21c019a251cdd212bfb80cb4fe5a27ed69c548c2a2f70a6acdb636db09a</dd></div>
+            <div class="field" tabindex="0"><dt>Commit<p class="hint" role="tooltip">The commit that was scanned.</p></dt><dd>a5d449055ab2</dd></div>
+          </dl>
+        </section>
+        <section class="card">
+          <h2>Summary</h2>
+          <p class="summary">17 high, 38 medium. Skipped 2 vendor or generated files. Removed 1 weaker SQL literal covered by a concatenation finding.</p>
+        </section>
+      </div>
+      <aside class="card">
+        <h2>Analyzers</h2>
+        <ul class="analyzers"><li><span class="dot dot-ok" aria-hidden="true"></span><span class="an-name">eslint</span><span class="an-status">ok, skipped 2 vendor or generated files</span></li><li><span class="dot dot-ok" aria-hidden="true"></span><span class="an-name">templates</span><span class="an-status">ok</span></li><li><span class="dot dot-ok" aria-hidden="true"></span><span class="an-name">advisories</span><span class="an-status">ok</span></li><li><span class="dot dot-ok" aria-hidden="true"></span><span class="an-name">npm-audit</span><span class="an-status">ok</span></li><li><span class="dot dot-skipped" aria-hidden="true"></span><span class="an-name">gitleaks</span><span class="an-status">skipped</span></li><li><span class="dot dot-skipped" aria-hidden="true"></span><span class="an-name">trivy</span><span class="an-status">skipped</span></li><li><span class="dot dot-skipped" aria-hidden="true"></span><span class="an-name">snapshot</span><span class="an-status">skipped 8 oversize files</span></li></ul>
+      </aside>
+    </div>
+    <section class="findings card">
+      <h2>Findings <span id="finding-count" class="count"></span></h2>
+      <p class="note">Choose a risk rating to save it in the local database. The choices are informational, low, medium, high, and critical.</p>
+      <p id="risk-status" class="note" role="status"></p>
+      <p class="tools"><button type="button" id="clear-filters">Clear filters</button></p>
+      <div class="wrap">
+      <table id="findings">
+        <thead>
+          <tr><th data-sort="risk" aria-sort="none"><button type="button">Risk</button></th><th data-sort="class" aria-sort="none"><button type="button">Class</button></th><th data-sort="subclass" aria-sort="none"><button type="button">Subclass</button></th><th data-sort="finding" aria-sort="none"><button type="button">Finding</button></th><th data-sort="problem" aria-sort="none"><button type="button">Problem</button></th><th data-sort="where" aria-sort="none"><button type="button">Location</button></th><th data-sort="code" aria-sort="none"><button type="button">Code</button></th><th data-sort="confidence" aria-sort="none"><button type="button">Confidence (0–1)</button></th><th data-sort="next" aria-sort="none"><button type="button">Next step</button></th><th data-sort="gate" aria-sort="none"><button type="button">Pull Status</button></th></tr>
+          <tr class="filters"><th><select data-filter="risk" aria-label="Filter Risk"><option value="">All</option><option value="high">high</option><option value="medium">medium</option></select></th><th><select data-filter="class" aria-label="Filter Class"><option value="">All</option><option value="Access control">Access control</option><option value="Authentication">Authentication</option><option value="Cross-site scripting">Cross-site scripting</option><option value="Cryptography">Cryptography</option><option value="Deserialization">Deserialization</option><option value="Error handling">Error handling</option><option value="Injection">Injection</option><option value="Path and file">Path and file</option><option value="Request forgery">Request forgery</option><option value="Secrets">Secrets</option><option value="Security configuration">Security configuration</option><option value="Sensitive data">Sensitive data</option><option value="Session">Session</option><option value="Supply chain">Supply chain</option></select></th><th><select data-filter="subclass" aria-label="Filter Subclass"><option value="">All</option><option value="Code injection">Code injection</option><option value="Command injection">Command injection</option><option value="Cross-site request forgery">Cross-site request forgery</option><option value="Cross-site scripting">Cross-site scripting</option><option value="Framework fingerprint">Framework fingerprint</option><option value="Hardcoded session secret">Hardcoded session secret</option><option value="Information disclosure">Information disclosure</option><option value="Insecure deserialization">Insecure deserialization</option><option value="Insecure direct object reference">Insecure direct object reference</option><option value="Local file inclusion">Local file inclusion</option><option value="Missing audit log">Missing audit log</option><option value="Missing authorization">Missing authorization</option><option value="Open redirect">Open redirect</option><option value="Predictable reset token">Predictable reset token</option><option value="Query logging">Query logging</option><option value="SQL injection">SQL injection</option><option value="Sensitive data in response">Sensitive data in response</option><option value="Timing-unsafe comparison">Timing-unsafe comparison</option><option value="Vulnerable dependency">Vulnerable dependency</option><option value="XML external entity">XML external entity</option></select></th><th><input data-filter="finding" aria-label="Filter Finding" placeholder="Filter"></th><th><input data-filter="problem" aria-label="Filter Problem" placeholder="Filter"></th><th><input data-filter="where" aria-label="Filter Location" placeholder="Filter"></th><th><input data-filter="code" aria-label="Filter Code" placeholder="Filter"></th><th><select data-filter="confidence" aria-label="Filter Confidence (0–1)"><option value="">All</option><option value="high">high</option><option value="medium">medium</option></select></th><th><input data-filter="next" aria-label="Filter Next step" placeholder="Filter"></th><th><select data-filter="gate" aria-label="Filter Pull Status"><option value="">All</option><option value="block">block</option><option value="comment">comment</option></select></th></tr>
+        </thead>
+        <tbody class="finding" data-risk="high" data-risk-rank="1" data-class="Injection" data-subclass="SQL injection" data-finding="SQL injection via concatenated query Similar to userSearch in dvna-master" data-problem="Request data is joined into the SQL. A caller can change the query and read or modify rows." data-where="dvna-master/core/appHandler.js:10 · userSearch" data-code="var query = &quot;SELECT name,id FROM Users WHERE login='&quot; + req.body.login + &quot;'&quot;;" data-confidence="high" data-confidence-rank="0" data-next="Confirm this value reaches a query call" data-gate="block" data-gate-rank="0">
+    <tr>
+      <td><select class="risk-select risk-high" data-finding="d4025927-a8f1-4367-b1d9-04c8062a87ee" aria-label="Risk rating"><option value="critical">critical</option><option value="high" selected>high</option><option value="medium">medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Injection</td>
+      <td class="subclass">SQL injection</td>
+      <td>SQL injection via concatenated query<button type="button" class="similar-toggle" aria-expanded="false">Similar to userSearch in dvna-master</button></td>
+      <td class="problem">Request data is joined into the SQL. A caller can change the query and read or modify rows.</td>
+      <td class="where">dvna-master/core/appHandler.js:10 · userSearch</td>
+      <td class="code"><code>var query = &quot;SELECT name,id FROM Users WHERE login='&quot; + req.body.login + &quot;'&quot;;</code></td>
+      <td>high (0.90)</td>
+      <td>Confirm this value reaches a query call</td>
+      <td><span class="chip status-block">block</span></td>
+    </tr><tr class="similar-row" hidden><td colspan="10">
+      <table class="compare">
+        <thead><tr><th>Finding</th><th>Rating</th><th>Location</th><th>Code</th><th>Likeness</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>SQL injection via concatenated query</td>
+            <td>Injection, high</td>
+            <td>dvna-master/core/appHandler.js:10 · userSearch</td>
+            <td class="code"><code>var query = &quot;SELECT name,id FROM Users WHERE login='&quot; + req.body.login + &quot;'&quot;;</code></td>
+            <td></td>
+          </tr>
+          <tr>
+            <td>SQL injection via concatenated query</td>
+            <td>Injection, high</td>
+            <td>dvna-master · core/appHandler.js · userSearch</td>
+            <td class="code"><code>var query = &quot;SELECT name,id FROM Users WHERE login='&quot; + req.body.login + &quot;'&quot;;</code></td>
+            <td>1 · patched twin 0.344</td>
+          </tr>
+        </tbody>
+      </table>
+      
+    </td></tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> The query text is built with a non-literal value. It looks for string concatenation, template literal, or ORDER BY fragment.</p><p><span class="k">Clears when.</span> bound parameter is present.</p><p><span class="k">Cannot see.</span> Blind, time-based, UNION, stacked, and second-order SQL are the same sink. Statement type is not a separate finding.</p><p>Similar to userSearch in dvna-master. Likeness 1. Patched twin 0.344. This score does not set the gate.</p><p class="muted">CWE-89 · js.sqli.string-concat · waiver id 3aaea3ca01213a76</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="high" data-risk-rank="1" data-class="Injection" data-subclass="Command injection" data-finding="OS command injection via shell exec Similar to ping in dvna-master" data-problem="A shell command is built with request data. A caller can run operating-system commands on the host." data-where="dvna-master/core/appHandler.js:39 · ping" data-code="exec('ping -c 2 ' + req.body.address, function (err, stdout, stderr) { output = stdout + stderr res.render('app/ping', { output: output }) })" data-confidence="high" data-confidence-rank="0" data-next="Confirm the command is not built from request data" data-gate="block" data-gate-rank="0">
+    <tr>
+      <td><select class="risk-select risk-high" data-finding="82bb9b93-84e4-49c0-954a-3a3d06d2a77d" aria-label="Risk rating"><option value="critical">critical</option><option value="high" selected>high</option><option value="medium">medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Injection</td>
+      <td class="subclass">Command injection</td>
+      <td>OS command injection via shell exec<button type="button" class="similar-toggle" aria-expanded="false">Similar to ping in dvna-master</button></td>
+      <td class="problem">A shell command is built with request data. A caller can run operating-system commands on the host.</td>
+      <td class="where">dvna-master/core/appHandler.js:39 · ping</td>
+      <td class="code"><code>exec('ping -c 2 ' + req.body.address, function (err, stdout, stderr) {
+		output = stdout + stderr
+		res.render('app/ping', {
+			output: output
+		})
+	})</code></td>
+      <td>high (0.90)</td>
+      <td>Confirm the command is not built from request data</td>
+      <td><span class="chip status-block">block</span></td>
+    </tr><tr class="similar-row" hidden><td colspan="10">
+      <table class="compare">
+        <thead><tr><th>Finding</th><th>Rating</th><th>Location</th><th>Code</th><th>Likeness</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>OS command injection via shell exec</td>
+            <td>Injection, high</td>
+            <td>dvna-master/core/appHandler.js:39 · ping</td>
+            <td class="code"><code>exec('ping -c 2 ' + req.body.address, function (err, stdout, stderr) {
+		output = stdout + stderr
+		res.render('app/ping', {
+			output: output
+		})
+	})</code></td>
+            <td></td>
+          </tr>
+          <tr>
+            <td>OS command injection via shell exec</td>
+            <td>Injection, high</td>
+            <td>dvna-master · core/appHandler.js · ping</td>
+            <td class="code"><code>exec('ping -c 2 ' + req.body.address, function (err, stdout, stderr) {
+		output = stdout + stderr
+		res.render('app/ping', {
+			output: output
+		})
+	})</code></td>
+            <td>1 · patched twin 0.391</td>
+          </tr>
+        </tbody>
+      </table>
+      
+    </td></tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> A shell exec call or a child_process import is present. It looks for child_process.exec or child_process import.</p><p><span class="k">Clears when.</span> execFile with an argument array is present.</p><p><span class="k">Cannot see.</span> Argument injection, PATH hijacking, and shell dialect are the same finding.</p><p>Similar to ping in dvna-master. Likeness 1. Patched twin 0.391. This score does not set the gate.</p><p class="muted">CWE-78 · detect-child-process · waiver id 4785d7bf7628a4d2</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="high" data-risk-rank="1" data-class="Request forgery" data-subclass="Open redirect" data-finding="Open redirect via request URL Similar to redirect in dvna-master" data-problem="The redirect target comes from the request. A caller can send the user to a site they control." data-where="dvna-master/core/appHandler.js:188 · redirect" data-code="res.redirect(req.query.url)" data-confidence="high" data-confidence-rank="0" data-next="Confirm the redirect target is a fixed path" data-gate="block" data-gate-rank="0">
+    <tr>
+      <td><select class="risk-select risk-high" data-finding="c433d18f-4f8f-4c09-9f03-4eeb7d124f1b" aria-label="Risk rating"><option value="critical">critical</option><option value="high" selected>high</option><option value="medium">medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Request forgery</td>
+      <td class="subclass">Open redirect</td>
+      <td>Open redirect via request URL<button type="button" class="similar-toggle" aria-expanded="false">Similar to redirect in dvna-master</button></td>
+      <td class="problem">The redirect target comes from the request. A caller can send the user to a site they control.</td>
+      <td class="where">dvna-master/core/appHandler.js:188 · redirect</td>
+      <td class="code"><code>res.redirect(req.query.url)</code></td>
+      <td>high (0.90)</td>
+      <td>Confirm the redirect target is a fixed path</td>
+      <td><span class="chip status-block">block</span></td>
+    </tr><tr class="similar-row" hidden><td colspan="10">
+      <table class="compare">
+        <thead><tr><th>Finding</th><th>Rating</th><th>Location</th><th>Code</th><th>Likeness</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Open redirect via request URL</td>
+            <td>Request forgery, high</td>
+            <td>dvna-master/core/appHandler.js:188 · redirect</td>
+            <td class="code"><code>res.redirect(req.query.url)</code></td>
+            <td></td>
+          </tr>
+          <tr>
+            <td>Open redirect via request URL</td>
+            <td>Request forgery, high</td>
+            <td>dvna-master · core/appHandler.js · redirect</td>
+            <td class="code"><code>res.redirect(req.query.url)</code></td>
+            <td>1 · patched twin 0.359</td>
+          </tr>
+        </tbody>
+      </table>
+      
+    </td></tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> The redirect target is request data or the Host header. It looks for redirect.</p><p><span class="k">Clears when.</span> fixed path is present.</p><p><span class="k">Cannot see.</span> Allowlist bypass and parser discrepancies are not visible here.</p><p>Similar to redirect in dvna-master. Likeness 1. Patched twin 0.359. This score does not set the gate.</p><p class="muted">CWE-601 · js.redirect.request · waiver id 42ed4daeff149ee9</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="high" data-risk-rank="1" data-class="Injection" data-subclass="Code injection" data-finding="Code injection via eval Similar to calc in dvna-master" data-problem="eval or Function runs request data. A caller can run JavaScript on the server." data-where="dvna-master/core/appHandler.js:197 · calc" data-code="output: mathjs.eval(req.body.eqn)" data-confidence="high" data-confidence-rank="0" data-next="Confirm this call does not run request data" data-gate="block" data-gate-rank="0">
+    <tr>
+      <td><select class="risk-select risk-high" data-finding="a78afde9-4cbf-4111-b64c-ad99536d81da" aria-label="Risk rating"><option value="critical">critical</option><option value="high" selected>high</option><option value="medium">medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Injection</td>
+      <td class="subclass">Code injection</td>
+      <td>Code injection via eval<button type="button" class="similar-toggle" aria-expanded="false">Similar to calc in dvna-master</button></td>
+      <td class="problem">eval or Function runs request data. A caller can run JavaScript on the server.</td>
+      <td class="where">dvna-master/core/appHandler.js:197 · calc</td>
+      <td class="code"><code>output: mathjs.eval(req.body.eqn)</code></td>
+      <td>high (0.90)</td>
+      <td>Confirm this call does not run request data</td>
+      <td><span class="chip status-block">block</span></td>
+    </tr><tr class="similar-row" hidden><td colspan="10">
+      <table class="compare">
+        <thead><tr><th>Finding</th><th>Rating</th><th>Location</th><th>Code</th><th>Likeness</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Code injection via eval</td>
+            <td>Injection, high</td>
+            <td>dvna-master/core/appHandler.js:197 · calc</td>
+            <td class="code"><code>output: mathjs.eval(req.body.eqn)</code></td>
+            <td></td>
+          </tr>
+          <tr>
+            <td>Code injection via eval</td>
+            <td>Injection, high</td>
+            <td>dvna-master · core/appHandler.js · calc</td>
+            <td class="code"><code>output: mathjs.eval(req.body.eqn)</code></td>
+            <td>1 · patched twin 0.391</td>
+          </tr>
+        </tbody>
+      </table>
+      
+    </td></tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> eval or Function is called with a non-literal. It looks for member eval or Function constructor.</p><p><span class="k">Clears when.</span> fixed function call is present.</p><p><span class="k">Cannot see.</span> Does not prove the argument is attacker-controlled.</p><p>Similar to calc in dvna-master. Likeness 1. Patched twin 0.391. This score does not set the gate.</p><p class="muted">CWE-94 · js.eval.member · waiver id 158a60540e415dda</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="high" data-risk-rank="1" data-class="Deserialization" data-subclass="Insecure deserialization" data-finding="Insecure deserialization via unserialize Similar to bulkProductsLegacy in dvna-master" data-problem="An uploaded payload is passed to unserialize. If the bytes are hostile, constructing the objects can run code the application did not call." data-where="dvna-master/core/appHandler.js:218 · bulkProductsLegacy" data-code="var products = serialize.unserialize(req.files.products.data.toString('utf8'))" data-confidence="high" data-confidence-rank="0" data-next="Confirm this parser is not given untrusted data" data-gate="block" data-gate-rank="0">
+    <tr>
+      <td><select class="risk-select risk-high" data-finding="e70e0715-a72f-4a96-9a7d-c312796404be" aria-label="Risk rating"><option value="critical">critical</option><option value="high" selected>high</option><option value="medium">medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Deserialization</td>
+      <td class="subclass">Insecure deserialization</td>
+      <td>Insecure deserialization via unserialize<button type="button" class="similar-toggle" aria-expanded="false">Similar to bulkProductsLegacy in dvna-master</button></td>
+      <td class="problem">An uploaded payload is passed to unserialize. If the bytes are hostile, constructing the objects can run code the application did not call.</td>
+      <td class="where">dvna-master/core/appHandler.js:218 · bulkProductsLegacy</td>
+      <td class="code"><code>var products = serialize.unserialize(req.files.products.data.toString('utf8'))</code></td>
+      <td>high (0.90)</td>
+      <td>Confirm this parser is not given untrusted data</td>
+      <td><span class="chip status-block">block</span></td>
+    </tr><tr class="similar-row" hidden><td colspan="10">
+      <table class="compare">
+        <thead><tr><th>Finding</th><th>Rating</th><th>Location</th><th>Code</th><th>Likeness</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Insecure deserialization via unserialize</td>
+            <td>Deserialization, high</td>
+            <td>dvna-master/core/appHandler.js:218 · bulkProductsLegacy</td>
+            <td class="code"><code>var products = serialize.unserialize(req.files.products.data.toString('utf8'))</code></td>
+            <td></td>
+          </tr>
+          <tr>
+            <td>Insecure deserialization via unserialize</td>
+            <td>Deserialization, high</td>
+            <td>dvna-master · core/appHandler.js · bulkProductsLegacy</td>
+            <td class="code"><code>var products = serialize.unserialize(req.files.products.data.toString('utf8'))</code></td>
+            <td>1 · patched twin 0.297</td>
+          </tr>
+        </tbody>
+      </table>
+      
+    </td></tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> A deserializer known to accept object graphs is called. It looks for unserialize, yaml.load, or unsafeLoad.</p><p><span class="k">Clears when.</span> safe load or JSON parse of a checked shape is present.</p><p><span class="k">Cannot see.</span> Pickle, Java, and .NET need other parsers. No gadget chain is reconstructed.</p><p>Similar to bulkProductsLegacy in dvna-master. Likeness 1. Patched twin 0.297. This score does not set the gate.</p><p class="muted">CWE-502 · js.deser.unserialize · waiver id 7f4bcf8aaf336339</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="high" data-risk-rank="1" data-class="Injection" data-subclass="XML external entity" data-finding="XML external entity expansion Similar to bulkProducts in dvna-master" data-problem="An uploaded document is parsed with entity substitution on. A hostile document can read local files or expand until the process runs out of memory." data-where="dvna-master/core/appHandler.js:235 · bulkProducts" data-code="var products = libxmljs.parseXmlString(req.files.products.data.toString('utf8'), {noent:true,noblanks:true})" data-confidence="high" data-confidence-rank="0" data-next="Confirm entity substitution is required for this parser" data-gate="block" data-gate-rank="0">
+    <tr>
+      <td><select class="risk-select risk-high" data-finding="8f0c6f6c-931e-481e-b4e2-4a5509cc0243" aria-label="Risk rating"><option value="critical">critical</option><option value="high" selected>high</option><option value="medium">medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Injection</td>
+      <td class="subclass">XML external entity</td>
+      <td>XML external entity expansion<button type="button" class="similar-toggle" aria-expanded="false">Similar to bulkProducts in dvna-master</button></td>
+      <td class="problem">An uploaded document is parsed with entity substitution on. A hostile document can read local files or expand until the process runs out of memory.</td>
+      <td class="where">dvna-master/core/appHandler.js:235 · bulkProducts</td>
+      <td class="code"><code>var products = libxmljs.parseXmlString(req.files.products.data.toString('utf8'), {noent:true,noblanks:true})</code></td>
+      <td>high (0.90)</td>
+      <td>Confirm entity substitution is required for this parser</td>
+      <td><span class="chip status-block">block</span></td>
+    </tr><tr class="similar-row" hidden><td colspan="10">
+      <table class="compare">
+        <thead><tr><th>Finding</th><th>Rating</th><th>Location</th><th>Code</th><th>Likeness</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>XML external entity expansion</td>
+            <td>Injection, high</td>
+            <td>dvna-master/core/appHandler.js:235 · bulkProducts</td>
+            <td class="code"><code>var products = libxmljs.parseXmlString(req.files.products.data.toString('utf8'), {noent:true,noblanks:true})</code></td>
+            <td></td>
+          </tr>
+          <tr>
+            <td>XML external entity expansion</td>
+            <td>Injection, high</td>
+            <td>dvna-master · core/appHandler.js · bulkProducts</td>
+            <td class="code"><code>var products = libxmljs.parseXmlString(req.files.products.data.toString('utf8'), {noent:true,noblanks:true})</code></td>
+            <td>1 · patched twin 0.281</td>
+          </tr>
+        </tbody>
+      </table>
+      
+    </td></tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> The parser options set noent to true. It looks for parseXml or parseXmlString.</p><p><span class="k">Clears when.</span> entity substitution disabled is present.</p><p><span class="k">Cannot see.</span> External DTD, XInclude, and entity expansion share this option.</p><p>Similar to bulkProducts in dvna-master. Likeness 1. Patched twin 0.281. This score does not set the gate.</p><p class="muted">CWE-611 · js.xml.entities · waiver id d5c83e2b0b56d366</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="high" data-risk-rank="1" data-class="Authentication" data-subclass="Predictable reset token" data-finding="Password reset token is a hash of the login Similar to resetPw in dvna-master" data-problem="The reset token is the hash of the login from the request. A caller who knows the login can compute the token and reset that account." data-where="dvna-master/core/authHandler.js:49 · resetPw; dvna-master/core/authHandler.js:78 · resetPwSubmit" data-code="if (req.query.token == md5(req.query.login)) { if (req.body.token == md5(req.body.login)) {" data-confidence="high" data-confidence-rank="0" data-next="Confirm the reset token is random and stored for that user" data-gate="block" data-gate-rank="0">
+    <tr>
+      <td><select class="risk-select risk-high" data-finding="65eeaf4d-87d9-451f-96d5-9c7ab4100421" aria-label="Risk rating"><option value="critical">critical</option><option value="high" selected>high</option><option value="medium">medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Authentication</td>
+      <td class="subclass">Predictable reset token</td>
+      <td>Password reset token is a hash of the login<button type="button" class="similar-toggle" aria-expanded="false">Similar to resetPw in dvna-master</button></td>
+      <td class="problem">The reset token is the hash of the login from the request. A caller who knows the login can compute the token and reset that account.</td>
+      <td class="where">dvna-master/core/authHandler.js:49 · resetPw; dvna-master/core/authHandler.js:78 · resetPwSubmit</td>
+      <td class="code"><code>if (req.query.token == md5(req.query.login)) {
+
+if (req.body.token == md5(req.body.login)) {</code></td>
+      <td>high (0.90)</td>
+      <td>Confirm the reset token is random and stored for that user</td>
+      <td><span class="chip status-block">block</span></td>
+    </tr><tr class="similar-row" hidden><td colspan="10">
+      <table class="compare">
+        <thead><tr><th>Finding</th><th>Rating</th><th>Location</th><th>Code</th><th>Likeness</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Password reset token is a hash of the login</td>
+            <td>Authentication, high</td>
+            <td>dvna-master/core/authHandler.js:49 · resetPw; dvna-master/core/authHandler.js:78 · resetPwSubmit</td>
+            <td class="code"><code>if (req.query.token == md5(req.query.login)) {
+
+if (req.body.token == md5(req.body.login)) {</code></td>
+            <td></td>
+          </tr>
+          <tr>
+            <td>Password reset token is a hash of the login</td>
+            <td>Authentication, high</td>
+            <td>dvna-master · core/authHandler.js · resetPw</td>
+            <td class="code"><code>if (req.query.token == md5(req.query.login)) {
+
+if (req.body.token == md5(req.body.login)) {</code></td>
+            <td>1 · patched twin 0.531</td>
+          </tr>
+        </tbody>
+      </table>
+      
+    </td></tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> A token comparison hashes the login or username from the request. It looks for md5 of login or md5 of username.</p><p><span class="k">Clears when.</span> random token or stored expiry is present.</p><p><span class="k">Cannot see.</span> The same call is not also reported as a weak hash. An ordinary timing comparison on that line stays.</p><p>Similar to resetPw in dvna-master. Likeness 1. Patched twin 0.531. This score does not set the gate.</p><p class="muted">CWE-640 · js.auth.reset-token · waiver id 8bb8383d29eabe33</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="high" data-risk-rank="1" data-class="Supply chain" data-subclass="Vulnerable dependency" data-finding="mathjs 3.10.1 is a known vulnerable release" data-problem="This pinned version is on the simulator advisory list. The release is known to be vulnerable." data-where="dvna-master/package.json:25" data-code="&quot;mathjs&quot;: &quot;3.10.1&quot;," data-confidence="high" data-confidence-rank="0" data-next="Upgrade this package off the vulnerable pin" data-gate="block" data-gate-rank="0">
+    <tr>
+      <td><select class="risk-select risk-high" data-finding="7338288d-b16a-4a42-8e9a-424c67f210f1" aria-label="Risk rating"><option value="critical">critical</option><option value="high" selected>high</option><option value="medium">medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Supply chain</td>
+      <td class="subclass">Vulnerable dependency</td>
+      <td>mathjs 3.10.1 is a known vulnerable release</td>
+      <td class="problem">This pinned version is on the simulator advisory list. The release is known to be vulnerable.</td>
+      <td class="where">dvna-master/package.json:25</td>
+      <td class="code"><code>&quot;mathjs&quot;: &quot;3.10.1&quot;,</code></td>
+      <td>high (0.90)</td>
+      <td>Upgrade this package off the vulnerable pin</td>
+      <td><span class="chip status-block">block</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> package.json pins a version named in the simulator advisory list. It looks for package.json pin.</p><p><span class="k">Clears when.</span> upgraded version is present.</p><p><span class="k">Cannot see.</span> The list is the checked-in advisory set, not a live feed. A range specifier is not the pinned release.</p><p class="muted">CWE-1395 · js.supply.advisory · waiver id f02e621828cfc99e</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="high" data-risk-rank="1" data-class="Secrets" data-subclass="Hardcoded session secret" data-finding="Session secret is a source literal" data-problem="The session secret is a fixed string in source. Anyone who can read it can forge a session cookie." data-where="dvna-master/server.js:24" data-code="secret: 'keyboard cat'," data-confidence="high" data-confidence-rank="0" data-next="Move this secret out of source and rotate it" data-gate="block" data-gate-rank="0">
+    <tr>
+      <td><select class="risk-select risk-high" data-finding="34b39f2b-a3a3-4ab7-864f-622f19dc2d99" aria-label="Risk rating"><option value="critical">critical</option><option value="high" selected>high</option><option value="medium">medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Secrets</td>
+      <td class="subclass">Hardcoded session secret</td>
+      <td>Session secret is a source literal</td>
+      <td class="problem">The session secret is a fixed string in source. Anyone who can read it can forge a session cookie.</td>
+      <td class="where">dvna-master/server.js:24</td>
+      <td class="code"><code>secret: 'keyboard cat',</code></td>
+      <td>high (0.90)</td>
+      <td>Move this secret out of source and rotate it</td>
+      <td><span class="chip status-block">block</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> session() is given a secret property whose value is a string literal. It looks for session secret literal.</p><p><span class="k">Clears when.</span> environment variable or secret store is present.</p><p><span class="k">Cannot see.</span> A secret copied from a variable is not resolved. Gitleaks remains a separate credential scan.</p><p>Clone likeness: 0.203. Patched twin: 0.203.</p><p class="muted">CWE-798 · js.session.secret · waiver id 80faddde40e67262</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="high" data-risk-rank="1" data-class="Cross-site scripting" data-subclass="Cross-site scripting" data-finding="Cross-site scripting via HTML sink Similar to appendUsers in dvna-master" data-problem="A value that is not a fixed string is written as HTML. This line does not show request data. If a user controls the value, the browser can run it in another user's session." data-where="dvna-master/views/app/adminusers.ejs:40-42 · appendUsers" data-code="c_id.innerHTML = users[i].id; c_name.innerHTML = users[i].name; c_email.innerHTML = users[i].email;" data-confidence="high" data-confidence-rank="0" data-next="Confirm this HTML is not taken from a request" data-gate="block" data-gate-rank="0">
+    <tr>
+      <td><select class="risk-select risk-high" data-finding="9663aca9-13b3-45db-85b5-aa8d627c26fc" aria-label="Risk rating"><option value="critical">critical</option><option value="high" selected>high</option><option value="medium">medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Cross-site scripting</td>
+      <td class="subclass">Cross-site scripting</td>
+      <td>Cross-site scripting via HTML sink<button type="button" class="similar-toggle" aria-expanded="false">Similar to appendUsers in dvna-master</button></td>
+      <td class="problem">A value that is not a fixed string is written as HTML. This line does not show request data. If a user controls the value, the browser can run it in another user's session.</td>
+      <td class="where">dvna-master/views/app/adminusers.ejs:40-42 · appendUsers</td>
+      <td class="code"><code>c_id.innerHTML = users[i].id;
+c_name.innerHTML = users[i].name;
+c_email.innerHTML = users[i].email;</code></td>
+      <td>high (0.90)</td>
+      <td>Confirm this HTML is not taken from a request</td>
+      <td><span class="chip status-block">block</span></td>
+    </tr><tr class="similar-row" hidden><td colspan="10">
+      <table class="compare">
+        <thead><tr><th>Finding</th><th>Rating</th><th>Location</th><th>Code</th><th>Likeness</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Cross-site scripting via HTML sink</td>
+            <td>Cross-site scripting, high</td>
+            <td>dvna-master/views/app/adminusers.ejs:40-42 · appendUsers</td>
+            <td class="code"><code>c_id.innerHTML = users[i].id;
+c_name.innerHTML = users[i].name;
+c_email.innerHTML = users[i].email;</code></td>
+            <td></td>
+          </tr>
+          <tr>
+            <td>Cross-site scripting via HTML sink</td>
+            <td>Cross-site scripting, high</td>
+            <td>dvna-master · views/app/adminusers.ejs · appendUsers</td>
+            <td class="code"><code>c_id.innerHTML = users[i].id;
+c_name.innerHTML = users[i].name;
+c_email.innerHTML = users[i].email;</code></td>
+            <td>1 · patched twin 0.313</td>
+          </tr>
+        </tbody>
+      </table>
+      
+    </td></tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> A markup string or HTML sink receives a non-literal value. It looks for dangerouslySetInnerHTML, innerHTML, or response HTML string.</p><p><span class="k">Clears when.</span> text assignment or escaped text is present.</p><p><span class="k">Cannot see.</span> Reflected, stored, DOM, and context variants are not separated. Repeated copies of the same sink in one file are one finding that lists each line.</p><p>Similar to appendUsers in dvna-master. Likeness 1. Patched twin 0.313. This score does not set the gate.</p><p class="muted">CWE-79 · js.xss.dangerous-html · waiver id a58d29e21e784a7c</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="high" data-risk-rank="1" data-class="Cross-site scripting" data-subclass="Cross-site scripting" data-finding="Unescaped template output" data-problem="This template prints a value with an unescaped tag. If that value is user-controlled, the browser runs it in the viewer's session." data-where="dvna-master/views/app/products.ejs:20" data-code="Listing products with &lt;strong&gt;search query: &lt;/strong&gt; &lt;%- output.searchTerm %&gt;" data-confidence="high" data-confidence-rank="0" data-next="Confirm this output is escaped" data-gate="block" data-gate-rank="0">
+    <tr>
+      <td><select class="risk-select risk-high" data-finding="168ec40f-1252-4ab5-80f9-74bc188525f5" aria-label="Risk rating"><option value="critical">critical</option><option value="high" selected>high</option><option value="medium">medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Cross-site scripting</td>
+      <td class="subclass">Cross-site scripting</td>
+      <td>Unescaped template output</td>
+      <td class="problem">This template prints a value with an unescaped tag. If that value is user-controlled, the browser runs it in the viewer's session.</td>
+      <td class="where">dvna-master/views/app/products.ejs:20</td>
+      <td class="code"><code>Listing products with &lt;strong&gt;search query: &lt;/strong&gt; &lt;%- output.searchTerm %&gt;</code></td>
+      <td>high (0.90)</td>
+      <td>Confirm this output is escaped</td>
+      <td><span class="chip status-block">block</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> An EJS unescaped tag prints a value. It looks for unescaped template tag.</p><p><span class="k">Clears when.</span> escaped output or include is present.</p><p><span class="k">Cannot see.</span> A tag whose body starts with include is a partial, not this finding. Escaped tags are not reported. Repeated copies of the same sink in one file are one finding that lists each line.</p><p>Clone likeness: 0.078. Patched twin: 0.109.</p><p class="muted">CWE-79 · js.xss.template · waiver id d76ed3c802c79734</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="high" data-risk-rank="1" data-class="Cross-site scripting" data-subclass="Cross-site scripting" data-finding="Unescaped template output" data-problem="This template prints a value with an unescaped tag. If that value is user-controlled, the browser runs it in the viewer's session." data-where="dvna-master/views/app/products.ejs:49-53" data-code="&lt;td&gt;&lt;%- output.products[i].id %&gt;&lt;/td&gt; &lt;td&gt;&lt;%- output.products[i].name %&gt;&lt;/td&gt; &lt;td&gt;&lt;%- output.products[i].code %&gt;&lt;/td&gt; &lt;td&gt;&lt;%- output.products[i].tags %&gt;&lt;/td&gt; &lt;td&gt;&lt;%- output.products[i].description %&gt;&lt;/td&gt;" data-confidence="high" data-confidence-rank="0" data-next="Confirm this output is escaped" data-gate="block" data-gate-rank="0">
+    <tr>
+      <td><select class="risk-select risk-high" data-finding="a1a1d6c7-2f39-454a-a1f9-8e866cbc589c" aria-label="Risk rating"><option value="critical">critical</option><option value="high" selected>high</option><option value="medium">medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Cross-site scripting</td>
+      <td class="subclass">Cross-site scripting</td>
+      <td>Unescaped template output</td>
+      <td class="problem">This template prints a value with an unescaped tag. If that value is user-controlled, the browser runs it in the viewer's session.</td>
+      <td class="where">dvna-master/views/app/products.ejs:49-53</td>
+      <td class="code"><code>&lt;td&gt;&lt;%- output.products[i].id %&gt;&lt;/td&gt;
+&lt;td&gt;&lt;%- output.products[i].name %&gt;&lt;/td&gt;
+&lt;td&gt;&lt;%- output.products[i].code %&gt;&lt;/td&gt;
+&lt;td&gt;&lt;%- output.products[i].tags %&gt;&lt;/td&gt;
+&lt;td&gt;&lt;%- output.products[i].description %&gt;&lt;/td&gt;</code></td>
+      <td>high (0.90)</td>
+      <td>Confirm this output is escaped</td>
+      <td><span class="chip status-block">block</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> An EJS unescaped tag prints a value. It looks for unescaped template tag.</p><p><span class="k">Clears when.</span> escaped output or include is present.</p><p><span class="k">Cannot see.</span> A tag whose body starts with include is a partial, not this finding. Escaped tags are not reported. Repeated copies of the same sink in one file are one finding that lists each line.</p><p>Clone likeness: 0.078. Patched twin: 0.109.</p><p class="muted">CWE-79 · js.xss.template · waiver id efd7dc64adc20bc7</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="high" data-risk-rank="1" data-class="Injection" data-subclass="Code injection" data-finding="Code injection via eval" data-problem="eval runs request data. A caller can run JavaScript on the server." data-where="dvna-master/vulnerabilities/eval_remote_code_execution.js:5" data-code="var res = eval(&quot;(&quot;+req.query.e+&quot;)&quot;);" data-confidence="high" data-confidence-rank="0" data-next="Confirm this call does not run request data" data-gate="block" data-gate-rank="0">
+    <tr>
+      <td><select class="risk-select risk-high" data-finding="98ec7502-e85b-4f74-8f50-9a6cdb762f43" aria-label="Risk rating"><option value="critical">critical</option><option value="high" selected>high</option><option value="medium">medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Injection</td>
+      <td class="subclass">Code injection</td>
+      <td>Code injection via eval</td>
+      <td class="problem">eval runs request data. A caller can run JavaScript on the server.</td>
+      <td class="where">dvna-master/vulnerabilities/eval_remote_code_execution.js:5</td>
+      <td class="code"><code>var res = eval(&quot;(&quot;+req.query.e+&quot;)&quot;);</code></td>
+      <td>high (0.90)</td>
+      <td>Confirm this call does not run request data</td>
+      <td><span class="chip status-block">block</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> eval is called with a non-literal. It looks for eval.</p><p><span class="k">Clears when.</span> fixed function call is present.</p><p><span class="k">Cannot see.</span> Indirect calls through a variable are not named by this rule.</p><p>Clone likeness: 0.25. Patched twin: 0.313.</p><p class="muted">CWE-94 · detect-eval-with-expression · waiver id 057394455419132a</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="high" data-risk-rank="1" data-class="Cross-site scripting" data-subclass="Cross-site scripting" data-finding="Cross-site scripting via HTML sink" data-problem="A value that is not a fixed string is written as HTML. This line does not show request data. If a user controls the value, the browser can run it in another user's session." data-where="dvna-master/vulnerabilities/eval_remote_code_execution.js:6" data-code="res.send('Parameter eval():&lt;br&gt; ' + res);" data-confidence="high" data-confidence-rank="0" data-next="Confirm this HTML is not taken from a request" data-gate="block" data-gate-rank="0">
+    <tr>
+      <td><select class="risk-select risk-high" data-finding="2207c7ad-1627-4273-bb89-da392b574a52" aria-label="Risk rating"><option value="critical">critical</option><option value="high" selected>high</option><option value="medium">medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Cross-site scripting</td>
+      <td class="subclass">Cross-site scripting</td>
+      <td>Cross-site scripting via HTML sink</td>
+      <td class="problem">A value that is not a fixed string is written as HTML. This line does not show request data. If a user controls the value, the browser can run it in another user's session.</td>
+      <td class="where">dvna-master/vulnerabilities/eval_remote_code_execution.js:6</td>
+      <td class="code"><code>res.send('Parameter eval():&lt;br&gt; ' + res);</code></td>
+      <td>high (0.90)</td>
+      <td>Confirm this HTML is not taken from a request</td>
+      <td><span class="chip status-block">block</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> A markup string or HTML sink receives a non-literal value. It looks for dangerouslySetInnerHTML, innerHTML, or response HTML string.</p><p><span class="k">Clears when.</span> text assignment or escaped text is present.</p><p><span class="k">Cannot see.</span> Reflected, stored, DOM, and context variants are not separated. Repeated copies of the same sink in one file are one finding that lists each line.</p><p>Clone likeness: 0.25. Patched twin: 0.313.</p><p class="muted">CWE-79 · js.xss.dangerous-html · waiver id 5fe47a0e574073be</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="high" data-risk-rank="1" data-class="Cross-site scripting" data-subclass="Cross-site scripting" data-finding="Cross-site scripting via HTML sink" data-problem="A value that is not a fixed string is written as HTML. This line does not show request data. If a user controls the value, the browser can run it in another user's session." data-where="dvna-master/vulnerabilities/global_namespace_pollution.js:8" data-code="res.send('&lt;h2&gt;Issue: Global Namespace Pollution&lt;/h2&gt;'+'Global Scope Polluted Variable: ' + global)" data-confidence="high" data-confidence-rank="0" data-next="Confirm this HTML is not taken from a request" data-gate="block" data-gate-rank="0">
+    <tr>
+      <td><select class="risk-select risk-high" data-finding="2b36d71e-5395-4281-a820-a905c7e7f055" aria-label="Risk rating"><option value="critical">critical</option><option value="high" selected>high</option><option value="medium">medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Cross-site scripting</td>
+      <td class="subclass">Cross-site scripting</td>
+      <td>Cross-site scripting via HTML sink</td>
+      <td class="problem">A value that is not a fixed string is written as HTML. This line does not show request data. If a user controls the value, the browser can run it in another user's session.</td>
+      <td class="where">dvna-master/vulnerabilities/global_namespace_pollution.js:8</td>
+      <td class="code"><code>res.send('&lt;h2&gt;Issue: Global Namespace Pollution&lt;/h2&gt;'+'Global Scope Polluted Variable: ' + global)</code></td>
+      <td>high (0.90)</td>
+      <td>Confirm this HTML is not taken from a request</td>
+      <td><span class="chip status-block">block</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> A markup string or HTML sink receives a non-literal value. It looks for dangerouslySetInnerHTML, innerHTML, or response HTML string.</p><p><span class="k">Clears when.</span> text assignment or escaped text is present.</p><p><span class="k">Cannot see.</span> Reflected, stored, DOM, and context variants are not separated. Repeated copies of the same sink in one file are one finding that lists each line.</p><p>Clone likeness: 0.281. Patched twin: 0.25.</p><p class="muted">CWE-79 · js.xss.dangerous-html · waiver id 3fbc8fed620a0460</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="high" data-risk-rank="1" data-class="Injection" data-subclass="Code injection" data-finding="Code injection via eval" data-problem="eval runs request data. A caller can run JavaScript on the server." data-where="dvna-master/vulnerabilities/parameter_pollution.js:4" data-code="var resp=eval(&quot;(&quot;+req.query.target+&quot;)&quot;);" data-confidence="high" data-confidence-rank="0" data-next="Confirm this call does not run request data" data-gate="block" data-gate-rank="0">
+    <tr>
+      <td><select class="risk-select risk-high" data-finding="139ab082-aab1-4b6a-9193-f03c98940583" aria-label="Risk rating"><option value="critical">critical</option><option value="high" selected>high</option><option value="medium">medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Injection</td>
+      <td class="subclass">Code injection</td>
+      <td>Code injection via eval</td>
+      <td class="problem">eval runs request data. A caller can run JavaScript on the server.</td>
+      <td class="where">dvna-master/vulnerabilities/parameter_pollution.js:4</td>
+      <td class="code"><code>var resp=eval(&quot;(&quot;+req.query.target+&quot;)&quot;);</code></td>
+      <td>high (0.90)</td>
+      <td>Confirm this call does not run request data</td>
+      <td><span class="chip status-block">block</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> eval is called with a non-literal. It looks for eval.</p><p><span class="k">Clears when.</span> fixed function call is present.</p><p><span class="k">Cannot see.</span> Indirect calls through a variable are not named by this rule.</p><p>Clone likeness: 0.25. Patched twin: 0.297.</p><p class="muted">CWE-94 · detect-eval-with-expression · waiver id 6f8b6b6cb3f2c954</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="high" data-risk-rank="1" data-class="Cross-site scripting" data-subclass="Cross-site scripting" data-finding="Cross-site scripting via HTML sink" data-problem="A value that is not a fixed string is written as HTML. This line does not show request data. If a user controls the value, the browser can run it in another user's session." data-where="dvna-master/vulnerabilities/parameter_pollution.js:5" data-code="res.send('Parameter Value:&lt;/br&gt;'+resp);" data-confidence="high" data-confidence-rank="0" data-next="Confirm this HTML is not taken from a request" data-gate="block" data-gate-rank="0">
+    <tr>
+      <td><select class="risk-select risk-high" data-finding="4df4c485-3bcf-47a3-b4c9-dddaaa568c3f" aria-label="Risk rating"><option value="critical">critical</option><option value="high" selected>high</option><option value="medium">medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Cross-site scripting</td>
+      <td class="subclass">Cross-site scripting</td>
+      <td>Cross-site scripting via HTML sink</td>
+      <td class="problem">A value that is not a fixed string is written as HTML. This line does not show request data. If a user controls the value, the browser can run it in another user's session.</td>
+      <td class="where">dvna-master/vulnerabilities/parameter_pollution.js:5</td>
+      <td class="code"><code>res.send('Parameter Value:&lt;/br&gt;'+resp);</code></td>
+      <td>high (0.90)</td>
+      <td>Confirm this HTML is not taken from a request</td>
+      <td><span class="chip status-block">block</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> A markup string or HTML sink receives a non-literal value. It looks for dangerouslySetInnerHTML, innerHTML, or response HTML string.</p><p><span class="k">Clears when.</span> text assignment or escaped text is present.</p><p><span class="k">Cannot see.</span> Reflected, stored, DOM, and context variants are not separated. Repeated copies of the same sink in one file are one finding that lists each line.</p><p>Clone likeness: 0.25. Patched twin: 0.297.</p><p class="muted">CWE-79 · js.xss.dangerous-html · waiver id 6d79e74f5b6e39e2</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Access control" data-subclass="Insecure direct object reference" data-finding="Record id taken from the request and saved Similar to modifyProductSubmit in dvna-master" data-problem="The record is loaded by an id from the request and then saved. A caller can change another person's row by submitting that id." data-where="dvna-master/core/appHandler.js:107 · modifyProductSubmit; dvna-master/core/appHandler.js:145 · userEditSubmit" data-code="db.Product.find({ where: { 'id': req.body.id } }).then(product =&gt; { db.User.find({ where: { 'id': req.body.id } }).then(user =&gt;{" data-confidence="medium" data-confidence-rank="1" data-next="Confirm this id is the caller's" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="98afd429-4061-4efe-9054-73a29be5de5b" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Access control</td>
+      <td class="subclass">Insecure direct object reference</td>
+      <td>Record id taken from the request and saved<button type="button" class="similar-toggle" aria-expanded="false">Similar to modifyProductSubmit in dvna-master</button></td>
+      <td class="problem">The record is loaded by an id from the request and then saved. A caller can change another person's row by submitting that id.</td>
+      <td class="where">dvna-master/core/appHandler.js:107 · modifyProductSubmit; dvna-master/core/appHandler.js:145 · userEditSubmit</td>
+      <td class="code"><code>db.Product.find({
+		where: {
+			'id': req.body.id
+		}
+	}).then(product =&gt; {
+
+db.User.find({
+		where: {
+			'id': req.body.id
+		}		
+	}).then(user =&gt;{</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm this id is the caller's</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="similar-row" hidden><td colspan="10">
+      <table class="compare">
+        <thead><tr><th>Finding</th><th>Rating</th><th>Location</th><th>Code</th><th>Likeness</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Record id taken from the request and saved</td>
+            <td>Access control, medium</td>
+            <td>dvna-master/core/appHandler.js:107 · modifyProductSubmit; dvna-master/core/appHandler.js:145 · userEditSubmit</td>
+            <td class="code"><code>db.Product.find({
+		where: {
+			'id': req.body.id
+		}
+	}).then(product =&gt; {
+
+db.User.find({
+		where: {
+			'id': req.body.id
+		}		
+	}).then(user =&gt;{</code></td>
+            <td></td>
+          </tr>
+          <tr>
+            <td>Record id taken from the request and saved</td>
+            <td>Access control, medium</td>
+            <td>dvna-master · core/appHandler.js · modifyProductSubmit</td>
+            <td class="code"><code>db.Product.find({
+		where: {
+			'id': req.body.id
+		}
+	}).then(product =&gt; {
+
+db.User.find({
+		where: {
+			'id': req.body.id
+		}		
+	}).then(user =&gt;{</code></td>
+            <td>1 · patched twin 0.563</td>
+          </tr>
+        </tbody>
+      </table>
+      
+    </td></tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> A query uses an id from the request and the loaded record is written in that continuation. It looks for find by request id or save.</p><p><span class="k">Clears when.</span> session id is present.</p><p><span class="k">Cannot see.</span> A lookup that only renders is not a write. An ownership check in another function is not visible. Repeated copies of the same sink in one file are one finding that lists each line.</p><p>Similar to modifyProductSubmit in dvna-master. Likeness 1. Patched twin 0.563. This score does not set the gate.</p><p class="muted">CWE-639 · js.authz.object-id · waiver id 70798709ba079451</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Cryptography" data-subclass="Timing-unsafe comparison" data-finding="Secret compared with ordinary equality Similar to userEditSubmit in dvna-master" data-problem="A password, token, or secret is compared with ordinary equality. The comparison can reveal how much of the secret matched." data-where="dvna-master/core/appHandler.js:152 · userEditSubmit" data-code="if (req.body.password == req.body.cpassword) {" data-confidence="medium" data-confidence-rank="1" data-next="Confirm this value is not a token, password, or cipher input" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="a678de46-0987-4f9f-aa59-4571dcb3d628" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Cryptography</td>
+      <td class="subclass">Timing-unsafe comparison</td>
+      <td>Secret compared with ordinary equality<button type="button" class="similar-toggle" aria-expanded="false">Similar to userEditSubmit in dvna-master</button></td>
+      <td class="problem">A password, token, or secret is compared with ordinary equality. The comparison can reveal how much of the secret matched.</td>
+      <td class="where">dvna-master/core/appHandler.js:152 · userEditSubmit</td>
+      <td class="code"><code>if (req.body.password == req.body.cpassword) {</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm this value is not a token, password, or cipher input</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="similar-row" hidden><td colspan="10">
+      <table class="compare">
+        <thead><tr><th>Finding</th><th>Rating</th><th>Location</th><th>Code</th><th>Likeness</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Secret compared with ordinary equality</td>
+            <td>Cryptography, medium</td>
+            <td>dvna-master/core/appHandler.js:152 · userEditSubmit</td>
+            <td class="code"><code>if (req.body.password == req.body.cpassword) {</code></td>
+            <td></td>
+          </tr>
+          <tr>
+            <td>Secret compared with ordinary equality</td>
+            <td>Cryptography, medium</td>
+            <td>dvna-master · core/appHandler.js · userEditSubmit</td>
+            <td class="code"><code>if (req.body.password == req.body.cpassword) {</code></td>
+            <td>1 · patched twin 0.359</td>
+          </tr>
+        </tbody>
+      </table>
+      
+    </td></tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> A weak algorithm, a static IV, Math.random, or an ordinary secret comparison is in source. It looks for md5, sha1, Math.random, createCipheriv, or equality.</p><p><span class="k">Clears when.</span> modern digest, randomBytes, random IV, or timing-safe compare is present.</p><p><span class="k">Cannot see.</span> Ordinary equality that does not name a password, token, or secret is ignored.</p><p>Similar to userEditSubmit in dvna-master. Likeness 1. Patched twin 0.359. This score does not set the gate.</p><p class="muted">CWE-327, CWE-328, CWE-208 · js.crypto.md5-token · waiver id c1b3f84bf2b7a6ca</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Error handling" data-subclass="Information disclosure" data-finding="Uncaught error can reach the client Similar to calc in dvna-master" data-problem="Request data is passed to a call that can throw, and this call is not inside try. The framework error handler can send the stack when the process is not in production." data-where="dvna-master/core/appHandler.js:197 · calc" data-code="output: mathjs.eval(req.body.eqn)" data-confidence="medium" data-confidence-rank="1" data-next="Confirm a handler sends a fixed message" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="1e10d526-73b9-4817-be96-65a2cae8d6c0" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Error handling</td>
+      <td class="subclass">Information disclosure</td>
+      <td>Uncaught error can reach the client<button type="button" class="similar-toggle" aria-expanded="false">Similar to calc in dvna-master</button></td>
+      <td class="problem">Request data is passed to a call that can throw, and this call is not inside try. The framework error handler can send the stack when the process is not in production.</td>
+      <td class="where">dvna-master/core/appHandler.js:197 · calc</td>
+      <td class="code"><code>output: mathjs.eval(req.body.eqn)</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm a handler sends a fixed message</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="similar-row" hidden><td colspan="10">
+      <table class="compare">
+        <thead><tr><th>Finding</th><th>Rating</th><th>Location</th><th>Code</th><th>Likeness</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Uncaught error can reach the client</td>
+            <td>Error handling, medium</td>
+            <td>dvna-master/core/appHandler.js:197 · calc</td>
+            <td class="code"><code>output: mathjs.eval(req.body.eqn)</code></td>
+            <td></td>
+          </tr>
+          <tr>
+            <td>Code injection via eval</td>
+            <td>Injection, high</td>
+            <td>dvna-master · core/appHandler.js · calc</td>
+            <td class="code"><code>output: mathjs.eval(req.body.eqn)</code></td>
+            <td>1 · patched twin 0.391</td>
+          </tr>
+        </tbody>
+      </table>
+      
+    </td></tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> eval is called with a non-literal and the call is not inside try. It looks for eval outside try.</p><p><span class="k">Clears when.</span> try is present.</p><p><span class="k">Cannot see.</span> The code-injection finding on the same call stays. The framework's default error page is not in this file.</p><p>Similar to calc in dvna-master. Likeness 1. Patched twin 0.391. This score does not set the gate.</p><p class="muted">CWE-209 · js.error.uncaught · waiver id 15b6d575d37895c8</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Sensitive data" data-subclass="Sensitive data in response" data-finding="Full record sent in a JSON response Similar to listUsersAPI in dvna-master" data-problem="The query does not limit columns, and the result is sent as JSON. A user record includes the password hash." data-where="dvna-master/core/appHandler.js:207 · listUsersAPI" data-code="db.User.findAll({}).then(users =&gt; {" data-confidence="medium" data-confidence-rank="1" data-next="Confirm the response lists only the fields the client needs" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="eef47e94-f50f-4b9f-b620-9de89947e9c5" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Sensitive data</td>
+      <td class="subclass">Sensitive data in response</td>
+      <td>Full record sent in a JSON response<button type="button" class="similar-toggle" aria-expanded="false">Similar to listUsersAPI in dvna-master</button></td>
+      <td class="problem">The query does not limit columns, and the result is sent as JSON. A user record includes the password hash.</td>
+      <td class="where">dvna-master/core/appHandler.js:207 · listUsersAPI</td>
+      <td class="code"><code>db.User.findAll({}).then(users =&gt; {</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm the response lists only the fields the client needs</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="similar-row" hidden><td colspan="10">
+      <table class="compare">
+        <thead><tr><th>Finding</th><th>Rating</th><th>Location</th><th>Code</th><th>Likeness</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Full record sent in a JSON response</td>
+            <td>Sensitive data, medium</td>
+            <td>dvna-master/core/appHandler.js:207 · listUsersAPI</td>
+            <td class="code"><code>db.User.findAll({}).then(users =&gt; {</code></td>
+            <td></td>
+          </tr>
+          <tr>
+            <td>Full record sent in a JSON response</td>
+            <td>Sensitive data, medium</td>
+            <td>dvna-master · core/appHandler.js · listUsersAPI</td>
+            <td class="code"><code>db.User.findAll({}).then(users =&gt; {</code></td>
+            <td>1 · patched twin 0.469</td>
+          </tr>
+        </tbody>
+      </table>
+      
+    </td></tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> A model query with no attributes list is sent with res.json or res.send in the same continuation. It looks for findAll, find, findOne, or res.json.</p><p><span class="k">Clears when.</span> attributes list is present.</p><p><span class="k">Cannot see.</span> A render call is not a JSON response. The column names are not read from the model.</p><p>Similar to listUsersAPI in dvna-master. Likeness 1. Patched twin 0.469. This score does not set the gate.</p><p class="muted">CWE-200 · js.sensitive.response · waiver id cd1ea9da550a4a28</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Cryptography" data-subclass="Timing-unsafe comparison" data-finding="Secret compared with ordinary equality Similar to resetPw in dvna-master" data-problem="A password, token, or secret is compared with ordinary equality. The comparison can reveal how much of the secret matched." data-where="dvna-master/core/authHandler.js:49 · resetPw; dvna-master/core/authHandler.js:78 · resetPwSubmit" data-code="if (req.query.token == md5(req.query.login)) { if (req.body.token == md5(req.body.login)) {" data-confidence="medium" data-confidence-rank="1" data-next="Confirm this value is not a token, password, or cipher input" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="18ad00f1-4e3c-4dc5-ba65-0c3aa54107eb" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Cryptography</td>
+      <td class="subclass">Timing-unsafe comparison</td>
+      <td>Secret compared with ordinary equality<button type="button" class="similar-toggle" aria-expanded="false">Similar to resetPw in dvna-master</button></td>
+      <td class="problem">A password, token, or secret is compared with ordinary equality. The comparison can reveal how much of the secret matched.</td>
+      <td class="where">dvna-master/core/authHandler.js:49 · resetPw; dvna-master/core/authHandler.js:78 · resetPwSubmit</td>
+      <td class="code"><code>if (req.query.token == md5(req.query.login)) {
+
+if (req.body.token == md5(req.body.login)) {</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm this value is not a token, password, or cipher input</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="similar-row" hidden><td colspan="10">
+      <table class="compare">
+        <thead><tr><th>Finding</th><th>Rating</th><th>Location</th><th>Code</th><th>Likeness</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Secret compared with ordinary equality</td>
+            <td>Cryptography, medium</td>
+            <td>dvna-master/core/authHandler.js:49 · resetPw; dvna-master/core/authHandler.js:78 · resetPwSubmit</td>
+            <td class="code"><code>if (req.query.token == md5(req.query.login)) {
+
+if (req.body.token == md5(req.body.login)) {</code></td>
+            <td></td>
+          </tr>
+          <tr>
+            <td>Password reset token is a hash of the login</td>
+            <td>Authentication, high</td>
+            <td>dvna-master · core/authHandler.js · resetPw</td>
+            <td class="code"><code>if (req.query.token == md5(req.query.login)) {
+
+if (req.body.token == md5(req.body.login)) {</code></td>
+            <td>1 · patched twin 0.531</td>
+          </tr>
+        </tbody>
+      </table>
+      
+    </td></tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> A weak algorithm, a static IV, Math.random, or an ordinary secret comparison is in source. It looks for md5, sha1, Math.random, createCipheriv, or equality.</p><p><span class="k">Clears when.</span> modern digest, randomBytes, random IV, or timing-safe compare is present.</p><p><span class="k">Cannot see.</span> Ordinary equality that does not name a password, token, or secret is ignored.</p><p>Similar to resetPw in dvna-master. Likeness 1. Patched twin 0.531. This score does not set the gate.</p><p class="muted">CWE-327, CWE-328, CWE-208 · js.crypto.md5-token · waiver id 98565a43c519c0e6</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Cryptography" data-subclass="Timing-unsafe comparison" data-finding="Secret compared with ordinary equality Similar to resetPwSubmit in dvna-master" data-problem="A password, token, or secret is compared with ordinary equality. The comparison can reveal how much of the secret matched." data-where="dvna-master/core/authHandler.js:71 · resetPwSubmit" data-code="if (req.body.password == req.body.cpassword) {" data-confidence="medium" data-confidence-rank="1" data-next="Confirm this value is not a token, password, or cipher input" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="a9a706db-d257-4969-b219-2b9ec4ed5bf2" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Cryptography</td>
+      <td class="subclass">Timing-unsafe comparison</td>
+      <td>Secret compared with ordinary equality<button type="button" class="similar-toggle" aria-expanded="false">Similar to resetPwSubmit in dvna-master</button></td>
+      <td class="problem">A password, token, or secret is compared with ordinary equality. The comparison can reveal how much of the secret matched.</td>
+      <td class="where">dvna-master/core/authHandler.js:71 · resetPwSubmit</td>
+      <td class="code"><code>if (req.body.password == req.body.cpassword) {</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm this value is not a token, password, or cipher input</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="similar-row" hidden><td colspan="10">
+      <table class="compare">
+        <thead><tr><th>Finding</th><th>Rating</th><th>Location</th><th>Code</th><th>Likeness</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Secret compared with ordinary equality</td>
+            <td>Cryptography, medium</td>
+            <td>dvna-master/core/authHandler.js:71 · resetPwSubmit</td>
+            <td class="code"><code>if (req.body.password == req.body.cpassword) {</code></td>
+            <td></td>
+          </tr>
+          <tr>
+            <td>Secret compared with ordinary equality</td>
+            <td>Cryptography, medium</td>
+            <td>dvna-master · core/authHandler.js · resetPwSubmit</td>
+            <td class="code"><code>if (req.body.password == req.body.cpassword) {</code></td>
+            <td>1 · patched twin 0.438</td>
+          </tr>
+        </tbody>
+      </table>
+      
+    </td></tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> A weak algorithm, a static IV, Math.random, or an ordinary secret comparison is in source. It looks for md5, sha1, Math.random, createCipheriv, or equality.</p><p><span class="k">Clears when.</span> modern digest, randomBytes, random IV, or timing-safe compare is present.</p><p><span class="k">Cannot see.</span> Ordinary equality that does not name a password, token, or secret is ignored.</p><p>Similar to resetPwSubmit in dvna-master. Likeness 1. Patched twin 0.438. This score does not set the gate.</p><p class="muted">CWE-327, CWE-328, CWE-208 · js.crypto.md5-token · waiver id d8f463011167f0a8</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Security configuration" data-subclass="Missing audit log" data-finding="Failed sign-in is not logged" data-problem="Authentication failure returns without a log call in this function. A repeated guessing attempt leaves no record." data-where="dvna-master/core/passport.js:21" data-code="done(null, false)" data-confidence="medium" data-confidence-rank="1" data-next="Confirm failed sign-in is written to the audit log" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="2adf594e-bacd-4fa0-956d-5ae928db33f9" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Security configuration</td>
+      <td class="subclass">Missing audit log</td>
+      <td>Failed sign-in is not logged</td>
+      <td class="problem">Authentication failure returns without a log call in this function. A repeated guessing attempt leaves no record.</td>
+      <td class="where">dvna-master/core/passport.js:21</td>
+      <td class="code"><code>done(null, false)</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm failed sign-in is written to the audit log</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> done(null, false) runs in a function that has no log call. It looks for done(null, false).</p><p><span class="k">Clears when.</span> log call is present.</p><p><span class="k">Cannot see.</span> A log written in the caller, or under another name, is not visible.</p><p>Clone likeness: 0.313. Patched twin: 0.313.</p><p class="muted">CWE-778 · js.audit.auth-log · waiver id 2f989bf61f1927b3</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Security configuration" data-subclass="Missing audit log" data-finding="Failed sign-in is not logged" data-problem="Authentication failure returns without a log call in this function. A repeated guessing attempt leaves no record." data-where="dvna-master/core/passport.js:37; dvna-master/core/passport.js:40" data-code="return done(null, false, req.flash('danger', 'Invalid Credentials')) return done(null, false, req.flash('danger', 'Invalid Credentials'))" data-confidence="medium" data-confidence-rank="1" data-next="Confirm failed sign-in is written to the audit log" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="fa23b025-8de8-43c7-8450-c85f36ec46da" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Security configuration</td>
+      <td class="subclass">Missing audit log</td>
+      <td>Failed sign-in is not logged</td>
+      <td class="problem">Authentication failure returns without a log call in this function. A repeated guessing attempt leaves no record.</td>
+      <td class="where">dvna-master/core/passport.js:37; dvna-master/core/passport.js:40</td>
+      <td class="code"><code>return done(null, false, req.flash('danger', 'Invalid Credentials'))
+
+return done(null, false, req.flash('danger', 'Invalid Credentials'))</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm failed sign-in is written to the audit log</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> done(null, false) runs in a function that has no log call. It looks for done(null, false).</p><p><span class="k">Clears when.</span> log call is present.</p><p><span class="k">Cannot see.</span> A log written in the caller, or under another name, is not visible.</p><p>Clone likeness: 0.313. Patched twin: 0.313.</p><p class="muted">CWE-778 · js.audit.auth-log · waiver id 00b5c1f380f358a9</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Security configuration" data-subclass="Missing audit log" data-finding="Failed sign-in is not logged" data-problem="Authentication failure returns without a log call in this function. A repeated guessing attempt leaves no record." data-where="dvna-master/core/passport.js:61" data-code="return done(null, false, req.flash('danger', 'Account Already Exists'));" data-confidence="medium" data-confidence-rank="1" data-next="Confirm failed sign-in is written to the audit log" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="5baa7de9-5c04-4589-86be-1c21d1fe0fa4" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Security configuration</td>
+      <td class="subclass">Missing audit log</td>
+      <td>Failed sign-in is not logged</td>
+      <td class="problem">Authentication failure returns without a log call in this function. A repeated guessing attempt leaves no record.</td>
+      <td class="where">dvna-master/core/passport.js:61</td>
+      <td class="code"><code>return done(null, false, req.flash('danger', 'Account Already Exists'));</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm failed sign-in is written to the audit log</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> done(null, false) runs in a function that has no log call. It looks for done(null, false).</p><p><span class="k">Clears when.</span> log call is present.</p><p><span class="k">Cannot see.</span> A log written in the caller, or under another name, is not visible.</p><p>Clone likeness: 0.313. Patched twin: 0.313.</p><p class="muted">CWE-778 · js.audit.auth-log · waiver id 5bd765da91dac297</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Cryptography" data-subclass="Timing-unsafe comparison" data-finding="Secret compared with ordinary equality" data-problem="A password, token, or secret is compared with ordinary equality. The comparison can reveal how much of the secret matched." data-where="dvna-master/core/passport.js:64" data-code="if (req.body.cpassword == req.body.password) {" data-confidence="medium" data-confidence-rank="1" data-next="Confirm this value is not a token, password, or cipher input" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="8315763d-97e3-4e4d-a608-968b59d47e35" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Cryptography</td>
+      <td class="subclass">Timing-unsafe comparison</td>
+      <td>Secret compared with ordinary equality</td>
+      <td class="problem">A password, token, or secret is compared with ordinary equality. The comparison can reveal how much of the secret matched.</td>
+      <td class="where">dvna-master/core/passport.js:64</td>
+      <td class="code"><code>if (req.body.cpassword == req.body.password) {</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm this value is not a token, password, or cipher input</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> A weak algorithm, a static IV, Math.random, or an ordinary secret comparison is in source. It looks for md5, sha1, Math.random, createCipheriv, or equality.</p><p><span class="k">Clears when.</span> modern digest, randomBytes, random IV, or timing-safe compare is present.</p><p><span class="k">Cannot see.</span> Ordinary equality that does not name a password, token, or secret is ignored.</p><p>Clone likeness: 0.313. Patched twin: 0.313.</p><p class="muted">CWE-327, CWE-328, CWE-208 · js.crypto.md5-token · waiver id 3952aac69e7b6e5a</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Security configuration" data-subclass="Missing audit log" data-finding="Failed sign-in is not logged" data-problem="Authentication failure returns without a log call in this function. A repeated guessing attempt leaves no record." data-where="dvna-master/core/passport.js:74" data-code="return done(null, false, req.flash('danger', 'Passwords dont match'));" data-confidence="medium" data-confidence-rank="1" data-next="Confirm failed sign-in is written to the audit log" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="63921d8e-f5c0-4b5d-bb52-302f5ee62207" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Security configuration</td>
+      <td class="subclass">Missing audit log</td>
+      <td>Failed sign-in is not logged</td>
+      <td class="problem">Authentication failure returns without a log call in this function. A repeated guessing attempt leaves no record.</td>
+      <td class="where">dvna-master/core/passport.js:74</td>
+      <td class="code"><code>return done(null, false, req.flash('danger', 'Passwords dont match'));</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm failed sign-in is written to the audit log</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> done(null, false) runs in a function that has no log call. It looks for done(null, false).</p><p><span class="k">Clears when.</span> log call is present.</p><p><span class="k">Cannot see.</span> A log written in the caller, or under another name, is not visible.</p><p>Clone likeness: 0.313. Patched twin: 0.313.</p><p class="muted">CWE-778 · js.audit.auth-log · waiver id e7170b8a68e5f69d</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Security configuration" data-subclass="Missing audit log" data-finding="Failed sign-in is not logged" data-problem="Authentication failure returns without a log call in this function. A repeated guessing attempt leaves no record." data-where="dvna-master/core/passport.js:77" data-code="return done(null, false, req.flash('danger', 'Input field(s) missing'));" data-confidence="medium" data-confidence-rank="1" data-next="Confirm failed sign-in is written to the audit log" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="3369013a-14f2-4d87-b67d-fa775e7ebf9b" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Security configuration</td>
+      <td class="subclass">Missing audit log</td>
+      <td>Failed sign-in is not logged</td>
+      <td class="problem">Authentication failure returns without a log call in this function. A repeated guessing attempt leaves no record.</td>
+      <td class="where">dvna-master/core/passport.js:77</td>
+      <td class="code"><code>return done(null, false, req.flash('danger', 'Input field(s) missing'));</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm failed sign-in is written to the audit log</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> done(null, false) runs in a function that has no log call. It looks for done(null, false).</p><p><span class="k">Clears when.</span> log call is present.</p><p><span class="k">Cannot see.</span> A log written in the caller, or under another name, is not visible.</p><p>Clone likeness: 0.313. Patched twin: 0.313.</p><p class="muted">CWE-778 · js.audit.auth-log · waiver id b034161ba951ed4c</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Sensitive data" data-subclass="Query logging" data-finding="Database client logs queries" data-problem="The database client is created without logging turned off. Queries, including ones that contain passwords or tokens, are written to the log." data-where="dvna-master/models/index.js:10" data-code="var sequelize = new Sequelize(process.env.DATABASE_URL);" data-confidence="medium" data-confidence-rank="1" data-next="Confirm database logging is off" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="56003654-54aa-4a78-81bd-70105aa2461d" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Sensitive data</td>
+      <td class="subclass">Query logging</td>
+      <td>Database client logs queries</td>
+      <td class="problem">The database client is created without logging turned off. Queries, including ones that contain passwords or tokens, are written to the log.</td>
+      <td class="where">dvna-master/models/index.js:10</td>
+      <td class="code"><code>var sequelize = new Sequelize(process.env.DATABASE_URL);</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm database logging is off</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> new Sequelize is called without logging set to false. It looks for Sequelize constructor.</p><p><span class="k">Clears when.</span> logging: false is present.</p><p><span class="k">Cannot see.</span> A logging flag inside a variable is not visible. Both the URL form and the options form are reported.</p><p>Clone likeness: 0.25. Patched twin: 0.313.</p><p class="muted">CWE-532 · js.orm.query-log · waiver id 57f7329e4935e465</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Sensitive data" data-subclass="Query logging" data-finding="Database client logs queries" data-problem="The database client is created without logging turned off. Queries, including ones that contain passwords or tokens, are written to the log." data-where="dvna-master/models/index.js:12" data-code="var sequelize = new Sequelize(config.database, config.username, config.password, { host: config.host, dialect: config.dialect });" data-confidence="medium" data-confidence-rank="1" data-next="Confirm database logging is off" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="d1fe8bff-33ae-4c6f-bafe-d167417e1174" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Sensitive data</td>
+      <td class="subclass">Query logging</td>
+      <td>Database client logs queries</td>
+      <td class="problem">The database client is created without logging turned off. Queries, including ones that contain passwords or tokens, are written to the log.</td>
+      <td class="where">dvna-master/models/index.js:12</td>
+      <td class="code"><code>var sequelize = new Sequelize(config.database, config.username, config.password, {
+    host: config.host,
+    dialect: config.dialect
+  });</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm database logging is off</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> new Sequelize is called without logging set to false. It looks for Sequelize constructor.</p><p><span class="k">Clears when.</span> logging: false is present.</p><p><span class="k">Cannot see.</span> A logging flag inside a variable is not visible. Both the URL form and the options form are reported.</p><p>Clone likeness: 0.25. Patched twin: 0.313.</p><p class="muted">CWE-532 · js.orm.query-log · waiver id e3ac878aea9d1811</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Path and file" data-subclass="Local file inclusion" data-finding="Local file inclusion via dynamic path" data-problem="A filesystem call uses a path that is not a fixed string. This line does not show request data. If a caller can influence the path, they can read or overwrite files outside the intended directory." data-where="dvna-master/models/index.js:37" data-code="fs .readdirSync(__dirname)" data-confidence="medium" data-confidence-rank="1" data-next="Path is not a literal; no request input is visible in this call" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="4f523eb0-1582-47ab-9ece-19ab5f5058cd" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Path and file</td>
+      <td class="subclass">Local file inclusion</td>
+      <td>Local file inclusion via dynamic path</td>
+      <td class="problem">A filesystem call uses a path that is not a fixed string. This line does not show request data. If a caller can influence the path, they can read or overwrite files outside the intended directory.</td>
+      <td class="where">dvna-master/models/index.js:37</td>
+      <td class="code"><code>fs
+  .readdirSync(__dirname)</code></td>
+      <td>medium (0.45)</td>
+      <td>Path is not a literal; no request input is visible in this call</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> A filesystem API receives a non-literal path. It looks for filesystem call.</p><p><span class="k">Clears when.</span> fixed path or final path segment only is present.</p><p><span class="k">Cannot see.</span> Archive entry names that never reach a filesystem call in this function are missed.</p><p>Clone likeness: 0.25. Patched twin: 0.313.</p><p class="muted">CWE-22 · detect-non-literal-fs-filename · waiver id d7a27a8e6cb6a9ed</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Access control" data-subclass="Missing authorization" data-finding="Admin route has no admin check in this file" data-problem="This admin route does not check a role in this file. A signed-in caller who is not an admin can call it if the handler does not check either." data-where="dvna-master/routes/app.js:42" data-code="router.get('/admin/usersapi', authHandler.isAuthenticated, appHandler.listUsersAPI)" data-confidence="medium" data-confidence-rank="1" data-next="Confirm the handler checks the caller's role" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="64f08089-4311-44ae-a97e-24441b00a5f6" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Access control</td>
+      <td class="subclass">Missing authorization</td>
+      <td>Admin route has no admin check in this file</td>
+      <td class="problem">This admin route does not check a role in this file. A signed-in caller who is not an admin can call it if the handler does not check either.</td>
+      <td class="where">dvna-master/routes/app.js:42</td>
+      <td class="code"><code>router.get('/admin/usersapi', authHandler.isAuthenticated, appHandler.listUsersAPI)</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm the handler checks the caller's role</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> The route path contains /admin and no handler in this call reads a role or is named as an admin check. It looks for admin route.</p><p><span class="k">Clears when.</span> admin middleware or role check in the handler is present.</p><p><span class="k">Cannot see.</span> A check inside a handler defined in another file is not visible.</p><p>Clone likeness: 0.266. Patched twin: 0.188.</p><p class="muted">CWE-862 · js.authz.admin-route · waiver id 9955720f11f75630</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Access control" data-subclass="Missing authorization" data-finding="Admin route has no admin check in this file" data-problem="This admin route does not check a role in this file. A signed-in caller who is not an admin can call it if the handler does not check either." data-where="dvna-master/routes/app.js:44" data-code="router.get('/admin/users', authHandler.isAuthenticated, function(req, res){ res.render('app/adminusers') })" data-confidence="medium" data-confidence-rank="1" data-next="Confirm the handler checks the caller's role" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="fba43023-a50e-4e18-a7c1-cdf36aa05070" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Access control</td>
+      <td class="subclass">Missing authorization</td>
+      <td>Admin route has no admin check in this file</td>
+      <td class="problem">This admin route does not check a role in this file. A signed-in caller who is not an admin can call it if the handler does not check either.</td>
+      <td class="where">dvna-master/routes/app.js:44</td>
+      <td class="code"><code>router.get('/admin/users', authHandler.isAuthenticated, function(req, res){
+        res.render('app/adminusers')
+    })</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm the handler checks the caller's role</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> The route path contains /admin and no handler in this call reads a role or is named as an admin check. It looks for admin route.</p><p><span class="k">Clears when.</span> admin middleware or role check in the handler is present.</p><p><span class="k">Cannot see.</span> A check inside a handler defined in another file is not visible.</p><p>Clone likeness: 0.266. Patched twin: 0.188.</p><p class="muted">CWE-862 · js.authz.admin-route · waiver id 3ef60f2a51d44cc8</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Session" data-subclass="Cross-site request forgery" data-finding="State-changing route has no CSRF check" data-problem="This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user." data-where="dvna-master/routes/app.js:50" data-code="router.post('/usersearch', authHandler.isAuthenticated, appHandler.userSearch)" data-confidence="medium" data-confidence-rank="1" data-next="Confirm a CSRF check is mounted for this route" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="03188052-79f2-41cb-97d8-2460f9f449d9" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Session</td>
+      <td class="subclass">Cross-site request forgery</td>
+      <td>State-changing route has no CSRF check</td>
+      <td class="problem">This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user.</td>
+      <td class="where">dvna-master/routes/app.js:50</td>
+      <td class="code"><code>router.post('/usersearch', authHandler.isAuthenticated, appHandler.userSearch)</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm a CSRF check is mounted for this route</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> The file registers a state-changing route and never mentions csrf or csurf. It looks for post, put, patch, or delete.</p><p><span class="k">Clears when.</span> csrf middleware is present.</p><p><span class="k">Cannot see.</span> A check mounted in another file is not visible. Every state-changing route in the file is reported.</p><p>Clone likeness: 0.266. Patched twin: 0.188.</p><p class="muted">CWE-352 · js.csrf.missing · waiver id 4a8a5e33030ce595</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Session" data-subclass="Cross-site request forgery" data-finding="State-changing route has no CSRF check" data-problem="This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user." data-where="dvna-master/routes/app.js:52" data-code="router.post('/ping', authHandler.isAuthenticated, appHandler.ping)" data-confidence="medium" data-confidence-rank="1" data-next="Confirm a CSRF check is mounted for this route" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="eddf2f21-b0d6-4020-97db-21e1f5125f31" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Session</td>
+      <td class="subclass">Cross-site request forgery</td>
+      <td>State-changing route has no CSRF check</td>
+      <td class="problem">This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user.</td>
+      <td class="where">dvna-master/routes/app.js:52</td>
+      <td class="code"><code>router.post('/ping', authHandler.isAuthenticated, appHandler.ping)</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm a CSRF check is mounted for this route</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> The file registers a state-changing route and never mentions csrf or csurf. It looks for post, put, patch, or delete.</p><p><span class="k">Clears when.</span> csrf middleware is present.</p><p><span class="k">Cannot see.</span> A check mounted in another file is not visible. Every state-changing route in the file is reported.</p><p>Clone likeness: 0.266. Patched twin: 0.188.</p><p class="muted">CWE-352 · js.csrf.missing · waiver id 77554b591712ac05</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Session" data-subclass="Cross-site request forgery" data-finding="State-changing route has no CSRF check" data-problem="This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user." data-where="dvna-master/routes/app.js:54" data-code="router.post('/products', authHandler.isAuthenticated, appHandler.productSearch)" data-confidence="medium" data-confidence-rank="1" data-next="Confirm a CSRF check is mounted for this route" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="71176475-f903-4148-be2f-56e01407cd22" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Session</td>
+      <td class="subclass">Cross-site request forgery</td>
+      <td>State-changing route has no CSRF check</td>
+      <td class="problem">This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user.</td>
+      <td class="where">dvna-master/routes/app.js:54</td>
+      <td class="code"><code>router.post('/products', authHandler.isAuthenticated, appHandler.productSearch)</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm a CSRF check is mounted for this route</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> The file registers a state-changing route and never mentions csrf or csurf. It looks for post, put, patch, or delete.</p><p><span class="k">Clears when.</span> csrf middleware is present.</p><p><span class="k">Cannot see.</span> A check mounted in another file is not visible. Every state-changing route in the file is reported.</p><p>Clone likeness: 0.266. Patched twin: 0.188.</p><p class="muted">CWE-352 · js.csrf.missing · waiver id c6cea808dddb719b</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Session" data-subclass="Cross-site request forgery" data-finding="State-changing route has no CSRF check" data-problem="This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user." data-where="dvna-master/routes/app.js:56" data-code="router.post('/modifyproduct', authHandler.isAuthenticated, appHandler.modifyProductSubmit)" data-confidence="medium" data-confidence-rank="1" data-next="Confirm a CSRF check is mounted for this route" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="6a027e90-334a-42f9-8a42-391e1e8e90c7" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Session</td>
+      <td class="subclass">Cross-site request forgery</td>
+      <td>State-changing route has no CSRF check</td>
+      <td class="problem">This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user.</td>
+      <td class="where">dvna-master/routes/app.js:56</td>
+      <td class="code"><code>router.post('/modifyproduct', authHandler.isAuthenticated, appHandler.modifyProductSubmit)</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm a CSRF check is mounted for this route</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> The file registers a state-changing route and never mentions csrf or csurf. It looks for post, put, patch, or delete.</p><p><span class="k">Clears when.</span> csrf middleware is present.</p><p><span class="k">Cannot see.</span> A check mounted in another file is not visible. Every state-changing route in the file is reported.</p><p>Clone likeness: 0.266. Patched twin: 0.188.</p><p class="muted">CWE-352 · js.csrf.missing · waiver id a4c7b44e9df53d23</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Session" data-subclass="Cross-site request forgery" data-finding="State-changing route has no CSRF check" data-problem="This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user." data-where="dvna-master/routes/app.js:58" data-code="router.post('/useredit', authHandler.isAuthenticated, appHandler.userEditSubmit)" data-confidence="medium" data-confidence-rank="1" data-next="Confirm a CSRF check is mounted for this route" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="38934353-382d-4dd0-b4d9-47f16fae9dbd" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Session</td>
+      <td class="subclass">Cross-site request forgery</td>
+      <td>State-changing route has no CSRF check</td>
+      <td class="problem">This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user.</td>
+      <td class="where">dvna-master/routes/app.js:58</td>
+      <td class="code"><code>router.post('/useredit', authHandler.isAuthenticated, appHandler.userEditSubmit)</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm a CSRF check is mounted for this route</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> The file registers a state-changing route and never mentions csrf or csurf. It looks for post, put, patch, or delete.</p><p><span class="k">Clears when.</span> csrf middleware is present.</p><p><span class="k">Cannot see.</span> A check mounted in another file is not visible. Every state-changing route in the file is reported.</p><p>Clone likeness: 0.266. Patched twin: 0.188.</p><p class="muted">CWE-352 · js.csrf.missing · waiver id 07fcbccbaca80f44</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Session" data-subclass="Cross-site request forgery" data-finding="State-changing route has no CSRF check" data-problem="This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user." data-where="dvna-master/routes/app.js:60" data-code="router.post('/calc', authHandler.isAuthenticated, appHandler.calc)" data-confidence="medium" data-confidence-rank="1" data-next="Confirm a CSRF check is mounted for this route" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="10937876-7fa3-4aec-b362-88a666fa1e1e" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Session</td>
+      <td class="subclass">Cross-site request forgery</td>
+      <td>State-changing route has no CSRF check</td>
+      <td class="problem">This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user.</td>
+      <td class="where">dvna-master/routes/app.js:60</td>
+      <td class="code"><code>router.post('/calc', authHandler.isAuthenticated, appHandler.calc)</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm a CSRF check is mounted for this route</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> The file registers a state-changing route and never mentions csrf or csurf. It looks for post, put, patch, or delete.</p><p><span class="k">Clears when.</span> csrf middleware is present.</p><p><span class="k">Cannot see.</span> A check mounted in another file is not visible. Every state-changing route in the file is reported.</p><p>Clone likeness: 0.266. Patched twin: 0.188.</p><p class="muted">CWE-352 · js.csrf.missing · waiver id ecc932e1e829bf04</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Session" data-subclass="Cross-site request forgery" data-finding="State-changing route has no CSRF check" data-problem="This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user." data-where="dvna-master/routes/app.js:62" data-code="router.post('/bulkproducts',authHandler.isAuthenticated, appHandler.bulkProducts);" data-confidence="medium" data-confidence-rank="1" data-next="Confirm a CSRF check is mounted for this route" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="f63bb002-c254-4d0a-ba65-a58193de5c87" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Session</td>
+      <td class="subclass">Cross-site request forgery</td>
+      <td>State-changing route has no CSRF check</td>
+      <td class="problem">This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user.</td>
+      <td class="where">dvna-master/routes/app.js:62</td>
+      <td class="code"><code>router.post('/bulkproducts',authHandler.isAuthenticated, appHandler.bulkProducts);</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm a CSRF check is mounted for this route</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> The file registers a state-changing route and never mentions csrf or csurf. It looks for post, put, patch, or delete.</p><p><span class="k">Clears when.</span> csrf middleware is present.</p><p><span class="k">Cannot see.</span> A check mounted in another file is not visible. Every state-changing route in the file is reported.</p><p>Clone likeness: 0.266. Patched twin: 0.188.</p><p class="muted">CWE-352 · js.csrf.missing · waiver id eddd34c5d3ac26dc</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Session" data-subclass="Cross-site request forgery" data-finding="State-changing route has no CSRF check" data-problem="This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user." data-where="dvna-master/routes/app.js:64" data-code="router.post('/bulkproductslegacy',authHandler.isAuthenticated, appHandler.bulkProductsLegacy);" data-confidence="medium" data-confidence-rank="1" data-next="Confirm a CSRF check is mounted for this route" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="71d9606c-a2d8-4b4a-929f-3de1181bfb35" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Session</td>
+      <td class="subclass">Cross-site request forgery</td>
+      <td>State-changing route has no CSRF check</td>
+      <td class="problem">This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user.</td>
+      <td class="where">dvna-master/routes/app.js:64</td>
+      <td class="code"><code>router.post('/bulkproductslegacy',authHandler.isAuthenticated, appHandler.bulkProductsLegacy);</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm a CSRF check is mounted for this route</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> The file registers a state-changing route and never mentions csrf or csurf. It looks for post, put, patch, or delete.</p><p><span class="k">Clears when.</span> csrf middleware is present.</p><p><span class="k">Cannot see.</span> A check mounted in another file is not visible. Every state-changing route in the file is reported.</p><p>Clone likeness: 0.266. Patched twin: 0.188.</p><p class="muted">CWE-352 · js.csrf.missing · waiver id 22b12ecb238b77e4</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Session" data-subclass="Cross-site request forgery" data-finding="State-changing route has no CSRF check" data-problem="This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user." data-where="dvna-master/routes/main.js:51" data-code="router.post('/login', passport.authenticate('login', { successRedirect: '/learn', failureRedirect: '/login', failureFlash: true }))" data-confidence="medium" data-confidence-rank="1" data-next="Confirm a CSRF check is mounted for this route" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="f8176af2-929f-4724-8474-3016dbca5b16" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Session</td>
+      <td class="subclass">Cross-site request forgery</td>
+      <td>State-changing route has no CSRF check</td>
+      <td class="problem">This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user.</td>
+      <td class="where">dvna-master/routes/main.js:51</td>
+      <td class="code"><code>router.post('/login', passport.authenticate('login', {
+		successRedirect: '/learn',
+		failureRedirect: '/login',
+		failureFlash: true
+	}))</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm a CSRF check is mounted for this route</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> The file registers a state-changing route and never mentions csrf or csurf. It looks for post, put, patch, or delete.</p><p><span class="k">Clears when.</span> csrf middleware is present.</p><p><span class="k">Cannot see.</span> A check mounted in another file is not visible. Every state-changing route in the file is reported.</p><p>Clone likeness: 0.234. Patched twin: 0.281.</p><p class="muted">CWE-352 · js.csrf.missing · waiver id d62b8c90197d9c1d</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Session" data-subclass="Cross-site request forgery" data-finding="State-changing route has no CSRF check" data-problem="This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user." data-where="dvna-master/routes/main.js:57" data-code="router.post('/register', passport.authenticate('signup', { successRedirect: '/learn', failureRedirect: '/register', failureFlash: true }))" data-confidence="medium" data-confidence-rank="1" data-next="Confirm a CSRF check is mounted for this route" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="a7de49d2-afdf-42f1-afb0-59f5f891ed33" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Session</td>
+      <td class="subclass">Cross-site request forgery</td>
+      <td>State-changing route has no CSRF check</td>
+      <td class="problem">This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user.</td>
+      <td class="where">dvna-master/routes/main.js:57</td>
+      <td class="code"><code>router.post('/register', passport.authenticate('signup', {
+		successRedirect: '/learn',
+		failureRedirect: '/register',
+		failureFlash: true
+	}))</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm a CSRF check is mounted for this route</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> The file registers a state-changing route and never mentions csrf or csurf. It looks for post, put, patch, or delete.</p><p><span class="k">Clears when.</span> csrf middleware is present.</p><p><span class="k">Cannot see.</span> A check mounted in another file is not visible. Every state-changing route in the file is reported.</p><p>Clone likeness: 0.234. Patched twin: 0.281.</p><p class="muted">CWE-352 · js.csrf.missing · waiver id a024dd07eb43eba0</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Session" data-subclass="Cross-site request forgery" data-finding="State-changing route has no CSRF check" data-problem="This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user." data-where="dvna-master/routes/main.js:63" data-code="router.post('/forgotpw', authHandler.forgotPw)" data-confidence="medium" data-confidence-rank="1" data-next="Confirm a CSRF check is mounted for this route" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="fef68cbe-225d-4c30-b940-f36c5d85ba68" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Session</td>
+      <td class="subclass">Cross-site request forgery</td>
+      <td>State-changing route has no CSRF check</td>
+      <td class="problem">This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user.</td>
+      <td class="where">dvna-master/routes/main.js:63</td>
+      <td class="code"><code>router.post('/forgotpw', authHandler.forgotPw)</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm a CSRF check is mounted for this route</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> The file registers a state-changing route and never mentions csrf or csurf. It looks for post, put, patch, or delete.</p><p><span class="k">Clears when.</span> csrf middleware is present.</p><p><span class="k">Cannot see.</span> A check mounted in another file is not visible. Every state-changing route in the file is reported.</p><p>Clone likeness: 0.234. Patched twin: 0.281.</p><p class="muted">CWE-352 · js.csrf.missing · waiver id 9b4be498472d37be</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Session" data-subclass="Cross-site request forgery" data-finding="State-changing route has no CSRF check" data-problem="This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user." data-where="dvna-master/routes/main.js:65" data-code="router.post('/resetpw', authHandler.resetPwSubmit)" data-confidence="medium" data-confidence-rank="1" data-next="Confirm a CSRF check is mounted for this route" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="a49b98aa-acb0-4143-88ae-3c9aa5e9c7c6" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Session</td>
+      <td class="subclass">Cross-site request forgery</td>
+      <td>State-changing route has no CSRF check</td>
+      <td class="problem">This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user.</td>
+      <td class="where">dvna-master/routes/main.js:65</td>
+      <td class="code"><code>router.post('/resetpw', authHandler.resetPwSubmit)</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm a CSRF check is mounted for this route</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> The file registers a state-changing route and never mentions csrf or csurf. It looks for post, put, patch, or delete.</p><p><span class="k">Clears when.</span> csrf middleware is present.</p><p><span class="k">Cannot see.</span> A check mounted in another file is not visible. Every state-changing route in the file is reported.</p><p>Clone likeness: 0.234. Patched twin: 0.281.</p><p class="muted">CWE-352 · js.csrf.missing · waiver id 56a73611b945a192</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Error handling" data-subclass="Information disclosure" data-finding="Express app has no error handler" data-problem="This file starts Express and does not register an error-handling middleware. The default handler sends the stack when NODE_ENV is not production." data-where="dvna-master/server.js:11" data-code="var app = express()" data-confidence="medium" data-confidence-rank="1" data-next="Confirm an error handler sends a fixed message" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="776885f7-c4e5-4a0c-bd68-dc4aa91a5dd2" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Error handling</td>
+      <td class="subclass">Information disclosure</td>
+      <td>Express app has no error handler</td>
+      <td class="problem">This file starts Express and does not register an error-handling middleware. The default handler sends the stack when NODE_ENV is not production.</td>
+      <td class="where">dvna-master/server.js:11</td>
+      <td class="code"><code>var app = express()</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm an error handler sends a fixed message</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> The file calls express() and never passes a function with four parameters to use(). It looks for express().</p><p><span class="k">Clears when.</span> four-argument middleware is present.</p><p><span class="k">Cannot see.</span> An error handler registered in another file is not visible.</p><p>Clone likeness: 0.203. Patched twin: 0.203.</p><p class="muted">CWE-209 · js.error.middleware · waiver id 7f47c6e9f9c72714</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Security configuration" data-subclass="Framework fingerprint" data-finding="X-Powered-By header left on" data-problem="This file starts Express and does not disable X-Powered-By. Responses advertise the framework." data-where="dvna-master/server.js:11" data-code="var app = express()" data-confidence="medium" data-confidence-rank="1" data-next="Confirm the framework name header is disabled" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="6c56457c-4202-4645-958b-793f64b52073" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Security configuration</td>
+      <td class="subclass">Framework fingerprint</td>
+      <td>X-Powered-By header left on</td>
+      <td class="problem">This file starts Express and does not disable X-Powered-By. Responses advertise the framework.</td>
+      <td class="where">dvna-master/server.js:11</td>
+      <td class="code"><code>var app = express()</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm the framework name header is disabled</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> The file calls express() and does not disable x-powered-by. It looks for express().</p><p><span class="k">Clears when.</span> disable x-powered-by is present.</p><p><span class="k">Cannot see.</span> A disable call in another file is not visible.</p><p>Clone likeness: 0.203. Patched twin: 0.203.</p><p class="muted">CWE-200 · js.config.powered-by · waiver id e5b2236a085ce037</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Path and file" data-subclass="Local file inclusion" data-finding="Local file inclusion via dynamic path" data-problem="A filesystem call uses a path that is not a fixed string. This line does not show request data. If a caller can influence the path, they can read or overwrite files outside the intended directory." data-where="dvna-master/vulnerabilities/directory_traversal.js:12" data-code="var readStream = fs.createReadStream(filePath);" data-confidence="medium" data-confidence-rank="1" data-next="Path is not a literal; no request input is visible in this call" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="10bf12a4-c9a4-416d-9a17-d149a172d5d9" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Path and file</td>
+      <td class="subclass">Local file inclusion</td>
+      <td>Local file inclusion via dynamic path</td>
+      <td class="problem">A filesystem call uses a path that is not a fixed string. This line does not show request data. If a caller can influence the path, they can read or overwrite files outside the intended directory.</td>
+      <td class="where">dvna-master/vulnerabilities/directory_traversal.js:12</td>
+      <td class="code"><code>var readStream = fs.createReadStream(filePath);</code></td>
+      <td>medium (0.45)</td>
+      <td>Path is not a literal; no request input is visible in this call</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> A filesystem API receives a non-literal path. It looks for filesystem call.</p><p><span class="k">Clears when.</span> fixed path or final path segment only is present.</p><p><span class="k">Cannot see.</span> Archive entry names that never reach a filesystem call in this function are missed.</p><p>Clone likeness: 0.25. Patched twin: 0.281.</p><p class="muted">CWE-22 · detect-non-literal-fs-filename · waiver id 77c4930d4f22243b</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Error handling" data-subclass="Information disclosure" data-finding="Uncaught error can reach the client" data-problem="Request data is passed to a call that can throw, and this call is not inside try. The framework error handler can send the stack when the process is not in production." data-where="dvna-master/vulnerabilities/eval_remote_code_execution.js:5" data-code="var res = eval(&quot;(&quot;+req.query.e+&quot;)&quot;);" data-confidence="medium" data-confidence-rank="1" data-next="Confirm a handler sends a fixed message" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="8b39de0e-2a31-4df1-ba0a-8c7b2dffa549" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Error handling</td>
+      <td class="subclass">Information disclosure</td>
+      <td>Uncaught error can reach the client</td>
+      <td class="problem">Request data is passed to a call that can throw, and this call is not inside try. The framework error handler can send the stack when the process is not in production.</td>
+      <td class="where">dvna-master/vulnerabilities/eval_remote_code_execution.js:5</td>
+      <td class="code"><code>var res = eval(&quot;(&quot;+req.query.e+&quot;)&quot;);</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm a handler sends a fixed message</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> eval is called with a non-literal and the call is not inside try. It looks for eval outside try.</p><p><span class="k">Clears when.</span> try is present.</p><p><span class="k">Cannot see.</span> The code-injection finding on the same call stays. The framework's default error page is not in this file.</p><p>Clone likeness: 0.25. Patched twin: 0.313.</p><p class="muted">CWE-209 · js.error.uncaught · waiver id 743549d3cbc57b4c</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Error handling" data-subclass="Information disclosure" data-finding="Express app has no error handler" data-problem="This file starts Express and does not register an error-handling middleware. The default handler sends the stack when NODE_ENV is not production." data-where="dvna-master/vulnerabilities/global_namespace_pollution.js:3" data-code="var app = express();" data-confidence="medium" data-confidence-rank="1" data-next="Confirm an error handler sends a fixed message" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="b645cd9b-4b27-420f-a963-9fb0df64475b" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Error handling</td>
+      <td class="subclass">Information disclosure</td>
+      <td>Express app has no error handler</td>
+      <td class="problem">This file starts Express and does not register an error-handling middleware. The default handler sends the stack when NODE_ENV is not production.</td>
+      <td class="where">dvna-master/vulnerabilities/global_namespace_pollution.js:3</td>
+      <td class="code"><code>var app = express();</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm an error handler sends a fixed message</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> The file calls express() and never passes a function with four parameters to use(). It looks for express().</p><p><span class="k">Clears when.</span> four-argument middleware is present.</p><p><span class="k">Cannot see.</span> An error handler registered in another file is not visible.</p><p>Clone likeness: 0.281. Patched twin: 0.25.</p><p class="muted">CWE-209 · js.error.middleware · waiver id a93dc6ee1fc8c4e6</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Security configuration" data-subclass="Framework fingerprint" data-finding="X-Powered-By header left on" data-problem="This file starts Express and does not disable X-Powered-By. Responses advertise the framework." data-where="dvna-master/vulnerabilities/global_namespace_pollution.js:3" data-code="var app = express();" data-confidence="medium" data-confidence-rank="1" data-next="Confirm the framework name header is disabled" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="39ae0c80-82ee-4f8a-8a74-9b9b46d2ef52" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Security configuration</td>
+      <td class="subclass">Framework fingerprint</td>
+      <td>X-Powered-By header left on</td>
+      <td class="problem">This file starts Express and does not disable X-Powered-By. Responses advertise the framework.</td>
+      <td class="where">dvna-master/vulnerabilities/global_namespace_pollution.js:3</td>
+      <td class="code"><code>var app = express();</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm the framework name header is disabled</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> The file calls express() and does not disable x-powered-by. It looks for express().</p><p><span class="k">Clears when.</span> disable x-powered-by is present.</p><p><span class="k">Cannot see.</span> A disable call in another file is not visible.</p><p>Clone likeness: 0.281. Patched twin: 0.25.</p><p class="muted">CWE-200 · js.config.powered-by · waiver id e781aee86720390b</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Error handling" data-subclass="Information disclosure" data-finding="Express app has no error handler" data-problem="This file starts Express and does not register an error-handling middleware. The default handler sends the stack when NODE_ENV is not production." data-where="dvna-master/vulnerabilities/parameter_pollution.js:2" data-code="var app = express();" data-confidence="medium" data-confidence-rank="1" data-next="Confirm an error handler sends a fixed message" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="b90b4bff-d11a-41ac-9760-311a538ed208" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Error handling</td>
+      <td class="subclass">Information disclosure</td>
+      <td>Express app has no error handler</td>
+      <td class="problem">This file starts Express and does not register an error-handling middleware. The default handler sends the stack when NODE_ENV is not production.</td>
+      <td class="where">dvna-master/vulnerabilities/parameter_pollution.js:2</td>
+      <td class="code"><code>var app = express();</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm an error handler sends a fixed message</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> The file calls express() and never passes a function with four parameters to use(). It looks for express().</p><p><span class="k">Clears when.</span> four-argument middleware is present.</p><p><span class="k">Cannot see.</span> An error handler registered in another file is not visible.</p><p>Clone likeness: 0.25. Patched twin: 0.297.</p><p class="muted">CWE-209 · js.error.middleware · waiver id 48a49c17d32fdc73</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Security configuration" data-subclass="Framework fingerprint" data-finding="X-Powered-By header left on" data-problem="This file starts Express and does not disable X-Powered-By. Responses advertise the framework." data-where="dvna-master/vulnerabilities/parameter_pollution.js:2" data-code="var app = express();" data-confidence="medium" data-confidence-rank="1" data-next="Confirm the framework name header is disabled" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="57a7055e-5d6e-4b90-a55e-57eac7c55ede" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Security configuration</td>
+      <td class="subclass">Framework fingerprint</td>
+      <td>X-Powered-By header left on</td>
+      <td class="problem">This file starts Express and does not disable X-Powered-By. Responses advertise the framework.</td>
+      <td class="where">dvna-master/vulnerabilities/parameter_pollution.js:2</td>
+      <td class="code"><code>var app = express();</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm the framework name header is disabled</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> The file calls express() and does not disable x-powered-by. It looks for express().</p><p><span class="k">Clears when.</span> disable x-powered-by is present.</p><p><span class="k">Cannot see.</span> A disable call in another file is not visible.</p><p>Clone likeness: 0.25. Patched twin: 0.297.</p><p class="muted">CWE-200 · js.config.powered-by · waiver id 81b4a74ef93dcd84</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Error handling" data-subclass="Information disclosure" data-finding="Uncaught error can reach the client" data-problem="Request data is passed to a call that can throw, and this call is not inside try. The framework error handler can send the stack when the process is not in production." data-where="dvna-master/vulnerabilities/parameter_pollution.js:4" data-code="var resp=eval(&quot;(&quot;+req.query.target+&quot;)&quot;);" data-confidence="medium" data-confidence-rank="1" data-next="Confirm a handler sends a fixed message" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="ce967347-c4e9-4b29-a5d6-879cf79b2464" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Error handling</td>
+      <td class="subclass">Information disclosure</td>
+      <td>Uncaught error can reach the client</td>
+      <td class="problem">Request data is passed to a call that can throw, and this call is not inside try. The framework error handler can send the stack when the process is not in production.</td>
+      <td class="where">dvna-master/vulnerabilities/parameter_pollution.js:4</td>
+      <td class="code"><code>var resp=eval(&quot;(&quot;+req.query.target+&quot;)&quot;);</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm a handler sends a fixed message</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> eval is called with a non-literal and the call is not inside try. It looks for eval outside try.</p><p><span class="k">Clears when.</span> try is present.</p><p><span class="k">Cannot see.</span> The code-injection finding on the same call stays. The framework's default error page is not in this file.</p><p>Clone likeness: 0.25. Patched twin: 0.297.</p><p class="muted">CWE-209 · js.error.uncaught · waiver id d3e7868ca579743e</p></div>
+    </details></td></tr>
+    </tbody>
+      </table>
+      </div>
+    </section>
+    <section class="charts">
+      <div class="chart card">
+    <h2>Risk</h2>
+    <p class="note">Findings in each risk classification.</p>
+    <ul class="bars"><li>
+      <span class="bar-label">critical</span>
+      <span class="bar-track"><span class="bar-fill fill-critical" style="width:0%"></span></span>
+      <span class="bar-count">0</span>
+    </li><li>
+      <span class="bar-label">high</span>
+      <span class="bar-track"><span class="bar-fill fill-high" style="width:44.7%"></span></span>
+      <span class="bar-count">17</span>
+    </li><li>
+      <span class="bar-label">medium</span>
+      <span class="bar-track"><span class="bar-fill fill-medium" style="width:100%"></span></span>
+      <span class="bar-count">38</span>
+    </li><li>
+      <span class="bar-label">low</span>
+      <span class="bar-track"><span class="bar-fill fill-low" style="width:0%"></span></span>
+      <span class="bar-count">0</span>
+    </li></ul>
+  </div>
+      <div class="chart card">
+    <h2>Pull status</h2>
+    <p class="note">Findings that block, comment, or were cleared.</p>
+    <ul class="bars"><li>
+      <span class="bar-label">block</span>
+      <span class="bar-track"><span class="bar-fill fill-block" style="width:44.7%"></span></span>
+      <span class="bar-count">17</span>
+    </li><li>
+      <span class="bar-label">comment</span>
+      <span class="bar-track"><span class="bar-fill fill-comment" style="width:100%"></span></span>
+      <span class="bar-count">38</span>
+    </li><li>
+      <span class="bar-label">cleared</span>
+      <span class="bar-track"><span class="bar-fill fill-clear" style="width:0%"></span></span>
+      <span class="bar-count">0</span>
+    </li></ul>
+  </div>
+    </section>
+    <section class="history card" id="report-archive">
+    <h2>Report archive</h2>
+    <p class="note">Earlier versions of this report, with the date and time each one was saved.</p>
+    <p class="muted">No earlier versions yet.</p>
+  </section>
+  </div>
+  <script>
+    (function () {
+      document.querySelectorAll(".risk-select").forEach((select) => {
+        select.dataset.saved = select.value;
+        select.addEventListener("change", () => {
+          const status = document.getElementById("risk-status");
+          const url = document.body.getAttribute("data-rating-url") || "";
+          if (!url) {
+            select.value = select.dataset.saved || select.value;
+            if (status) status.textContent = "This report has no save address.";
+            return;
+          }
+          if (status) status.textContent = "Saving rating…";
+          select.disabled = true;
+          const form = document.createElement("form");
+          form.method = "POST";
+          form.action = url;
+          const fields = {
+            finding_id: select.getAttribute("data-finding") || "",
+            risk_rating: select.value,
+            role: document.body.getAttribute("data-role") || "",
+            token: document.body.getAttribute("data-rating-token") || "",
+          };
+          for (const [name, value] of Object.entries(fields)) {
+            const input = document.createElement("input");
+            input.type = "hidden";
+            input.name = name;
+            input.value = value;
+            form.appendChild(input);
+          }
+          document.body.appendChild(form);
+          form.submit();
+        });
+      });
+      const table = document.getElementById("findings");
+      if (!table) return;
+      table.querySelectorAll(".similar-toggle").forEach((button) => {
+        button.addEventListener("click", () => {
+          const panel = button.closest("tbody") && button.closest("tbody").querySelector(".similar-row");
+          if (!panel) return;
+          const open = panel.hasAttribute("hidden");
+          panel.toggleAttribute("hidden", !open);
+          button.setAttribute("aria-expanded", open ? "true" : "false");
+        });
+      });
+      const headers = [...table.querySelectorAll("thead th[data-sort]")];
+      const count = document.getElementById("finding-count");
+      const clear = document.getElementById("clear-filters");
+      let sortKey = "risk";
+      let sortDir = 1;
+      function groups() {
+        return [...table.querySelectorAll("tbody.finding")];
+      }
+      function compare(left, right) {
+        const leftRank = left.getAttribute("data-" + sortKey + "-rank");
+        const rightRank = right.getAttribute("data-" + sortKey + "-rank");
+        if (leftRank !== null && rightRank !== null) return (Number(leftRank) - Number(rightRank)) * sortDir;
+        const leftText = left.getAttribute("data-" + sortKey) || "";
+        const rightText = right.getAttribute("data-" + sortKey) || "";
+        return leftText.localeCompare(rightText, undefined, { numeric: true, sensitivity: "base" }) * sortDir;
+      }
+      function apply() {
+        const filters = {};
+        table.querySelectorAll("[data-filter]").forEach((input) => {
+          filters[input.getAttribute("data-filter")] = input.value.trim().toLowerCase();
+        });
+        const rows = groups().sort(compare);
+        let shown = 0;
+        for (const row of rows) {
+          table.appendChild(row);
+          const hide = Object.entries(filters).some(([key, query]) => {
+            if (!query) return false;
+            return !(row.getAttribute("data-" + key) || "").toLowerCase().includes(query);
+          });
+          row.hidden = hide;
+          if (!hide) shown += 1;
+        }
+        if (count) {
+          const total = rows.length;
+          count.textContent = shown === total ? (total === 1 ? "1 finding" : total + " findings") : "Showing " + shown + " of " + total;
+        }
+        headers.forEach((headerCell) => {
+          const key = headerCell.getAttribute("data-sort");
+          headerCell.setAttribute("aria-sort", key === sortKey ? (sortDir === 1 ? "ascending" : "descending") : "none");
+        });
+      }
+      headers.forEach((headerCell) => {
+        const button = headerCell.querySelector("button");
+        if (!button) return;
+        button.addEventListener("click", () => {
+          const key = headerCell.getAttribute("data-sort");
+          if (sortKey === key) sortDir *= -1;
+          else {
+            sortKey = key;
+            sortDir = 1;
+          }
+          apply();
+        });
+      });
+      table.querySelectorAll("[data-filter]").forEach((input) => {
+        input.addEventListener("input", apply);
+        input.addEventListener("change", apply);
+      });
+      if (clear) {
+        clear.addEventListener("click", () => {
+          table.querySelectorAll("[data-filter]").forEach((input) => { input.value = ""; });
+          apply();
+        });
+      }
+      apply();
+    }());
+  </script>
+</body>
+</html>

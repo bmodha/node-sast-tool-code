@@ -1,0 +1,1336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Code review simulation</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0d1117;
+      --card: #161b22;
+      --ink: #e6edf3;
+      --muted: #8b949e;
+      --line: #30363d;
+      --soft: #21262d;
+      --accent: #58a6ff;
+      --accent-soft: #1c2d41;
+      --panel: #0d1117;
+      --critical: #f85149;
+      --high: #db6d28;
+      --medium: #d29922;
+      --low: #388bfd;
+      --info: #6e7681;
+      --clear: #3fb950;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: "Segoe UI", system-ui, sans-serif;
+      margin: 0;
+      color: var(--ink);
+      background: var(--bg);
+      line-height: 1.45;
+    }
+    .page { max-width: 1440px; margin: 0 auto; padding: 1.4rem 1.25rem 2.5rem; }
+    h1 { font-size: 1.45rem; font-weight: 650; letter-spacing: -0.02em; margin: 0 0 0.9rem; }
+    h2 { font-size: 1.02rem; font-weight: 650; color: var(--ink); margin: 0 0 0.45rem; }
+    h2 .count { font-size: 0.82rem; font-weight: 500; color: var(--muted); margin-left: 0.35rem; }
+    a { color: var(--accent); }
+    .top {
+      display: grid;
+      grid-template-columns: minmax(0, 1.55fr) minmax(16rem, 0.72fr);
+      gap: 0.9rem;
+      align-items: stretch;
+    }
+    .lead { display: grid; gap: 0.85rem; align-content: start; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 0.95rem 1.05rem 1.05rem;
+    }
+    .saved { margin: 0 0 0.75rem; color: var(--muted); font-size: 0.86rem; }
+    .meta { display: grid; gap: 0.32rem; margin: 0; }
+    .meta .field { position: relative; display: grid; grid-template-columns: 7.6rem minmax(0, 1fr); gap: 0.75rem; align-items: start; cursor: help; }
+    .field:hover, .field:focus-within { z-index: 5; }
+    .meta dt {
+      color: var(--muted);
+      font-size: 0.82rem;
+      padding-top: 0.08rem;
+      width: fit-content;
+      border-bottom: 1px dotted var(--muted);
+      cursor: help;
+    }
+    .meta dd { margin: 0; overflow-wrap: anywhere; }
+    .hint {
+      display: none;
+      position: absolute;
+      z-index: 4;
+      left: 0;
+      top: calc(100% + 0.2rem);
+      width: max-content;
+      max-width: 22rem;
+      margin: 0;
+      padding: 0.45rem 0.6rem;
+      background: #1c2128;
+      color: var(--ink);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      font-size: 0.78rem;
+      line-height: 1.35;
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55);
+    }
+    .field:hover .hint, .field:focus-within .hint { display: block; }
+    .summary { margin: 0; }
+    .analyzers { list-style: none; margin: 0; padding: 0; }
+    .analyzers li {
+      display: grid;
+      grid-template-columns: 0.55rem 1fr;
+      column-gap: 0.55rem;
+      row-gap: 0.05rem;
+      padding: 0.4rem 0;
+      border-bottom: 1px solid var(--soft);
+    }
+    .analyzers li:last-child { border-bottom: 0; padding-bottom: 0; }
+    .an-name { font-weight: 650; }
+    .an-status { grid-column: 2; color: var(--muted); font-size: 0.84rem; }
+    .empty-analyzer { color: var(--muted); display: block; }
+    .dot { width: 0.5rem; height: 0.5rem; border-radius: 50%; margin-top: 0.38rem; }
+    .dot-ok { background: var(--clear); }
+    .dot-skipped { background: var(--info); }
+    .dot-other { background: var(--accent); }
+    .findings, .history, .charts { margin-top: 0.9rem; }
+    .charts { display: grid; grid-template-columns: 1fr 1fr; gap: 0.9rem; }
+    .note { margin: 0 0 0.75rem; color: var(--muted); font-size: 0.86rem; }
+    .history ul { margin: 0; padding-left: 1.15rem; }
+    .history li { margin: 0.28rem 0; }
+    .back { margin: 0.7rem 0 0; }
+    .tools { margin: 0 0 0.65rem; }
+    .tools button, th button {
+      font: inherit;
+      color: var(--ink);
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 0.28rem 0.6rem;
+      cursor: pointer;
+    }
+    .tools button:hover, th button:hover { background: var(--accent-soft); }
+    th button { border: 0; background: none; border-radius: 6px; padding: 0; font-weight: 700; color: inherit; text-align: left; }
+    .wrap { overflow-x: auto; container-type: inline-size; }
+    table { border-collapse: collapse; width: 100%; min-width: 68rem; background: var(--card); }
+    .problem { min-width: 12rem; }
+    .code { min-width: 18rem; }
+    td:last-child { min-width: 6.2rem; }
+    th, td { padding: 0.48rem 0.55rem; text-align: left; font-size: 0.86rem; vertical-align: top; border-bottom: 1px solid var(--soft); }
+    thead th { background: var(--soft); color: var(--muted); }
+    th[aria-sort="ascending"] button::after { content: " ↑"; }
+    th[aria-sort="descending"] button::after { content: " ↓"; }
+    .filters th { background: var(--card); }
+    .filters input, .filters select {
+      width: 100%;
+      box-sizing: border-box;
+      font: inherit;
+      font-size: 0.75rem;
+      padding: 0.22rem 0.3rem;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--panel);
+      color: var(--ink);
+    }
+    tbody.finding:hover td { background: var(--soft); }
+    code {
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 0.8rem;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      background: var(--panel);
+      color: var(--ink);
+      border-radius: 4px;
+      padding: 0.12rem 0.28rem;
+    }
+    .where { white-space: normal; }
+    .muted { color: var(--muted); font-size: 0.8rem; }
+    .chip {
+      display: inline-block;
+      padding: 0.08rem 0.48rem;
+      border-radius: 999px;
+      font-weight: 650;
+      font-size: 0.78rem;
+      text-transform: capitalize;
+      letter-spacing: 0.01em;
+    }
+    .check { text-transform: none; }
+    .risk-critical, .status-block, .check-failure { background: #3d1214; color: #ff7b72; }
+    .risk-high { background: #3d220c; color: #f0883e; }
+    .risk-medium, .status-comment { background: #3d2e0a; color: #e3b341; }
+    .risk-low { background: #0d2847; color: #79c0ff; }
+    .status-clear, .check-success { background: #0f2d1a; color: #56d364; }
+    .risk-info { background: #21262d; color: #8b949e; }
+    .risk-select {
+      font: inherit;
+      font-weight: 650;
+      font-size: 0.78rem;
+      border-radius: 999px;
+      border: 1px solid transparent;
+      padding: 0.12rem 0.35rem;
+      cursor: pointer;
+      max-width: 9.8rem;
+    }
+    .risk-select:disabled { cursor: progress; opacity: 0.7; }
+    .subclass { font-weight: 650; }
+    tbody.finding[hidden] { display: none; }
+    details { margin: 0; }
+    summary { cursor: pointer; color: var(--ink); }
+    .similar-toggle {
+      display: block;
+      margin-top: 0.28rem;
+      padding: 0;
+      border: 0;
+      background: none;
+      color: var(--muted);
+      font: inherit;
+      font-size: 0.8rem;
+      text-align: left;
+      cursor: pointer;
+      width: fit-content;
+    }
+    .similar-toggle:hover { color: var(--accent); }
+    .similar-row > td { background: #10151c; padding: 0.75rem 0.7rem 0.9rem; }
+    table.compare {
+      min-width: 0;
+      width: min(100%, calc(100cqw - 1.4rem));
+      position: sticky;
+      left: 0.7rem;
+      background: transparent;
+    }
+    table.compare th:nth-child(4), table.compare td:nth-child(4) { width: 46%; }
+    table.compare th:nth-child(5), table.compare td:nth-child(5) { white-space: nowrap; }
+    .compare-note { margin: 0.45rem 0 0; }
+    .triage { display: grid; gap: 0.35rem; margin-top: 0.45rem; }
+    .triage p { margin: 0; }
+    .triage .k { font-weight: 650; }
+    .bars { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.55rem; }
+    .bars li { display: grid; grid-template-columns: 7.6rem 1fr 2rem; gap: 0.6rem; align-items: center; }
+    .bar-label { color: var(--muted); font-size: 0.88rem; }
+    .bar-track { height: 0.72rem; background: var(--soft); border-radius: 999px; overflow: hidden; }
+    .bar-fill { display: block; height: 100%; border-radius: 999px; min-width: 0; }
+    .bar-count { text-align: right; font-variant-numeric: tabular-nums; font-weight: 650; }
+    .fill-critical, .fill-block { background: var(--critical); }
+    .fill-high { background: var(--high); }
+    .fill-medium, .fill-comment { background: var(--medium); }
+    .fill-low { background: var(--low); }
+    .fill-clear { background: var(--clear); }
+    .fill-info { background: var(--info); }
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    @media (max-width: 860px) {
+      .top, .charts { grid-template-columns: 1fr; }
+      .where { white-space: normal; }
+    }
+  </style>
+</head>
+<body data-role="appsec" data-rating-url="" data-rating-token="">
+  <div class="page">
+    <h1>Code review simulation</h1>
+    <div class="top">
+      <div class="lead">
+        <section class="card">
+          <dl class="meta">
+            <div class="field" tabindex="0"><dt>Repository<p class="hint" role="tooltip">The repository this scan reviewed.</p></dt><dd>ID9-vulnerable-rest-api-main</dd></div>
+            <div class="field" tabindex="0"><dt>Report<p class="hint" role="tooltip">This scan's report file. Earlier versions are listed at the bottom with the date and time they were saved.</p></dt><dd>ID9-vulnerable-rest-api-main_report.html</dd></div>
+            <div class="field" tabindex="0"><dt>Role<p class="hint" role="tooltip">Who is viewing this report. AppSec also sees why a check fired and redacted secret previews.</p></dt><dd>appsec</dd></div>
+            <div class="field" tabindex="0"><dt>Deployment<p class="hint" role="tooltip">Failed or Passed. Failed means at least one finding blocks deployment. Passed means none do.</p></dt><dd><span class="chip check check-failure">Failed</span></dd></div>
+            <div class="field" tabindex="0"><dt>Why<p class="hint" role="tooltip">The reason this deployment failed or passed.</p></dt><dd>Deployment failed because 18 findings block it.</dd></div>
+            <div class="field" tabindex="0"><dt>Data class<p class="hint" role="tooltip">How sensitive the service is: public, internal, or restricted. Restricted can turn a high finding into a block.</p></dt><dd>restricted</dd></div>
+            <div class="field" tabindex="0"><dt>Cache hit<p class="hint" role="tooltip">Yes or no. Yes means this commit was already scanned with the same rules, so the analyzers did not run again.</p></dt><dd>no</dd></div>
+            <div class="field" tabindex="0"><dt>System 2<p class="hint" role="tooltip">The model review. Not run means only the rule checks produced these findings.</p></dt><dd>not_run</dd></div>
+            <div class="field" tabindex="0"><dt>Corpus<p class="hint" role="tooltip">The set of known-vulnerable samples this scan was compared with.</p></dt><dd>4c1da21c019a251cdd212bfb80cb4fe5a27ed69c548c2a2f70a6acdb636db09a</dd></div>
+            <div class="field" tabindex="0"><dt>Commit<p class="hint" role="tooltip">The commit that was scanned.</p></dt><dd>46f4736be09e</dd></div>
+          </dl>
+        </section>
+        <section class="card">
+          <h2>Summary</h2>
+          <p class="summary">18 high, 33 medium.</p>
+        </section>
+      </div>
+      <aside class="card">
+        <h2>Analyzers</h2>
+        <ul class="analyzers"><li><span class="dot dot-ok" aria-hidden="true"></span><span class="an-name">eslint</span><span class="an-status">ok</span></li><li><span class="dot dot-ok" aria-hidden="true"></span><span class="an-name">templates</span><span class="an-status">ok</span></li><li><span class="dot dot-ok" aria-hidden="true"></span><span class="an-name">advisories</span><span class="an-status">ok</span></li><li><span class="dot dot-ok" aria-hidden="true"></span><span class="an-name">npm-audit</span><span class="an-status">ok</span></li><li><span class="dot dot-skipped" aria-hidden="true"></span><span class="an-name">gitleaks</span><span class="an-status">skipped</span></li><li><span class="dot dot-skipped" aria-hidden="true"></span><span class="an-name">trivy</span><span class="an-status">skipped</span></li><li><span class="dot dot-skipped" aria-hidden="true"></span><span class="an-name">snapshot</span><span class="an-status">skipped 4 oversize files</span></li></ul>
+      </aside>
+    </div>
+    <section class="findings card">
+      <h2>Findings <span id="finding-count" class="count"></span></h2>
+      <p class="note">Choose a risk rating to save it in the local database. The choices are informational, low, medium, high, and critical.</p>
+      <p id="risk-status" class="note" role="status"></p>
+      <p class="tools"><button type="button" id="clear-filters">Clear filters</button></p>
+      <div class="wrap">
+      <table id="findings">
+        <thead>
+          <tr><th data-sort="risk" aria-sort="none"><button type="button">Risk</button></th><th data-sort="class" aria-sort="none"><button type="button">Class</button></th><th data-sort="subclass" aria-sort="none"><button type="button">Subclass</button></th><th data-sort="finding" aria-sort="none"><button type="button">Finding</button></th><th data-sort="problem" aria-sort="none"><button type="button">Problem</button></th><th data-sort="where" aria-sort="none"><button type="button">Location</button></th><th data-sort="code" aria-sort="none"><button type="button">Code</button></th><th data-sort="confidence" aria-sort="none"><button type="button">Confidence (0–1)</button></th><th data-sort="next" aria-sort="none"><button type="button">Next step</button></th><th data-sort="gate" aria-sort="none"><button type="button">Pull Status</button></th></tr>
+          <tr class="filters"><th><select data-filter="risk" aria-label="Filter Risk"><option value="">All</option><option value="high">high</option><option value="medium">medium</option></select></th><th><select data-filter="class" aria-label="Filter Class"><option value="">All</option><option value="Cross-site scripting">Cross-site scripting</option><option value="Error handling">Error handling</option><option value="Injection">Injection</option><option value="Path and file">Path and file</option><option value="Request forgery">Request forgery</option><option value="Security configuration">Security configuration</option><option value="Sensitive data">Sensitive data</option><option value="Session">Session</option></select></th><th><select data-filter="subclass" aria-label="Filter Subclass"><option value="">All</option><option value="Cross-site request forgery">Cross-site request forgery</option><option value="Cross-site scripting">Cross-site scripting</option><option value="Framework fingerprint">Framework fingerprint</option><option value="Information disclosure">Information disclosure</option><option value="Local file inclusion">Local file inclusion</option><option value="Secret in web storage">Secret in web storage</option><option value="Sensitive data in response">Sensitive data in response</option><option value="Server-side request forgery">Server-side request forgery</option><option value="Vulnerable clone">Vulnerable clone</option></select></th><th><input data-filter="finding" aria-label="Filter Finding" placeholder="Filter"></th><th><input data-filter="problem" aria-label="Filter Problem" placeholder="Filter"></th><th><input data-filter="where" aria-label="Filter Location" placeholder="Filter"></th><th><input data-filter="code" aria-label="Filter Code" placeholder="Filter"></th><th><select data-filter="confidence" aria-label="Filter Confidence (0–1)"><option value="">All</option><option value="high">high</option><option value="medium">medium</option><option value="low">low</option></select></th><th><input data-filter="next" aria-label="Filter Next step" placeholder="Filter"></th><th><select data-filter="gate" aria-label="Filter Pull Status"><option value="">All</option><option value="block">block</option><option value="comment">comment</option></select></th></tr>
+        </thead>
+        <tbody class="finding" data-risk="high" data-risk-rank="1" data-class="Cross-site scripting" data-subclass="Cross-site scripting" data-finding="Cross-site scripting via HTML sink" data-problem="A value that is not a fixed string is written as HTML. This line does not show request data. If a user controls the value, the browser can run it in another user's session." data-where="vulnerable-rest-api-main/client/src/components/about.jsx:67" data-code="&lt;p className='lead' dangerouslySetInnerHTML={{__html: `Thank you ${this.state.result} for subscribing!`}}&gt;&lt;/p&gt;" data-confidence="high" data-confidence-rank="0" data-next="Confirm this HTML is not taken from a request" data-gate="block" data-gate-rank="0">
+    <tr>
+      <td><select class="risk-select risk-high" data-finding="c4bcb71d-ff7e-4d80-b7af-58f9cbbd5f29" aria-label="Risk rating"><option value="critical">critical</option><option value="high" selected>high</option><option value="medium">medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Cross-site scripting</td>
+      <td class="subclass">Cross-site scripting</td>
+      <td>Cross-site scripting via HTML sink</td>
+      <td class="problem">A value that is not a fixed string is written as HTML. This line does not show request data. If a user controls the value, the browser can run it in another user's session.</td>
+      <td class="where">vulnerable-rest-api-main/client/src/components/about.jsx:67</td>
+      <td class="code"><code>&lt;p className='lead' dangerouslySetInnerHTML={{__html: `Thank you ${this.state.result} for subscribing!`}}&gt;&lt;/p&gt;</code></td>
+      <td>high (0.90)</td>
+      <td>Confirm this HTML is not taken from a request</td>
+      <td><span class="chip status-block">block</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> A markup string or HTML sink receives a non-literal value. It looks for dangerouslySetInnerHTML, innerHTML, or response HTML string.</p><p><span class="k">Clears when.</span> text assignment or escaped text is present.</p><p><span class="k">Cannot see.</span> Reflected, stored, DOM, and context variants are not separated. Repeated copies of the same sink in one file are one finding that lists each line.</p><p>Clone likeness: 0.219. Patched twin: 0.156.</p><p class="muted">CWE-79 · js.xss.dangerous-html · waiver id bb1fc3c04021c959</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="high" data-risk-rank="1" data-class="Cross-site scripting" data-subclass="Cross-site scripting" data-finding="Cross-site scripting via HTML sink" data-problem="A value that is not a fixed string is written as HTML. This line does not show request data. If a user controls the value, the browser can run it in another user's session." data-where="vulnerable-rest-api-main/client/src/components/profile.jsx:38" data-code="&lt;li className=&quot;nav-item&quot; dangerouslySetInnerHTML={{__html: `Name: ${userInfo.name}`}}&gt;" data-confidence="high" data-confidence-rank="0" data-next="Confirm this HTML is not taken from a request" data-gate="block" data-gate-rank="0">
+    <tr>
+      <td><select class="risk-select risk-high" data-finding="2a76c20b-8d7c-4898-81a4-c1f9f027b64f" aria-label="Risk rating"><option value="critical">critical</option><option value="high" selected>high</option><option value="medium">medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Cross-site scripting</td>
+      <td class="subclass">Cross-site scripting</td>
+      <td>Cross-site scripting via HTML sink</td>
+      <td class="problem">A value that is not a fixed string is written as HTML. This line does not show request data. If a user controls the value, the browser can run it in another user's session.</td>
+      <td class="where">vulnerable-rest-api-main/client/src/components/profile.jsx:38</td>
+      <td class="code"><code>&lt;li className=&quot;nav-item&quot; dangerouslySetInnerHTML={{__html: `Name: ${userInfo.name}`}}&gt;</code></td>
+      <td>high (0.90)</td>
+      <td>Confirm this HTML is not taken from a request</td>
+      <td><span class="chip status-block">block</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> A markup string or HTML sink receives a non-literal value. It looks for dangerouslySetInnerHTML, innerHTML, or response HTML string.</p><p><span class="k">Clears when.</span> text assignment or escaped text is present.</p><p><span class="k">Cannot see.</span> Reflected, stored, DOM, and context variants are not separated. Repeated copies of the same sink in one file are one finding that lists each line.</p><p>Clone likeness: 0.156. Patched twin: 0.188.</p><p class="muted">CWE-79 · js.xss.dangerous-html · waiver id f571cb5b1592332c</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="high" data-risk-rank="1" data-class="Request forgery" data-subclass="Server-side request forgery" data-finding="Server-side request forgery via dynamic URL" data-problem="An HTTP client is called with a URL that is not a fixed string. This line does not show request data. If a caller chooses the URL, the server will request hosts it can reach, including internal ones." data-where="vulnerable-rest-api-main/client/src/registerServiceWorker.js:86 · checkValidServiceWorker" data-code="fetch(swUrl)" data-confidence="high" data-confidence-rank="0" data-next="Confirm the host is a fixed origin" data-gate="block" data-gate-rank="0">
+    <tr>
+      <td><select class="risk-select risk-high" data-finding="2e721df5-26e9-4854-ab1e-d6abcdd3b7cb" aria-label="Risk rating"><option value="critical">critical</option><option value="high" selected>high</option><option value="medium">medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Request forgery</td>
+      <td class="subclass">Server-side request forgery</td>
+      <td>Server-side request forgery via dynamic URL</td>
+      <td class="problem">An HTTP client is called with a URL that is not a fixed string. This line does not show request data. If a caller chooses the URL, the server will request hosts it can reach, including internal ones.</td>
+      <td class="where">vulnerable-rest-api-main/client/src/registerServiceWorker.js:86 · checkValidServiceWorker</td>
+      <td class="code"><code>fetch(swUrl)</code></td>
+      <td>high (0.90)</td>
+      <td>Confirm the host is a fixed origin</td>
+      <td><span class="chip status-block">block</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> An HTTP client is called with a non-literal URL. It looks for fetch, http.get, or axios.</p><p><span class="k">Clears when.</span> fixed origin is present.</p><p><span class="k">Cannot see.</span> Blind, metadata, rebinding, and redirect-following variants are not separated.</p><p>Clone likeness: 0.266. Patched twin: 0.297.</p><p class="muted">CWE-918 · js.ssrf.fetch · waiver id d2132c51e47c13a5</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="high" data-risk-rank="1" data-class="Request forgery" data-subclass="Server-side request forgery" data-finding="Server-side request forgery via dynamic URL" data-problem="An HTTP client is called with a URL that is not a fixed string. This line does not show request data. If a caller chooses the URL, the server will request hosts it can reach, including internal ones." data-where="vulnerable-rest-api-main/client/src/services/authorService.js:5 · getAuthors" data-code="return http.get(api.apiEndpoint + &quot;/authors&quot;);" data-confidence="high" data-confidence-rank="0" data-next="Confirm the host is a fixed origin" data-gate="block" data-gate-rank="0">
+    <tr>
+      <td><select class="risk-select risk-high" data-finding="b3db4588-a2b3-49be-ae24-c94c5824bfd5" aria-label="Risk rating"><option value="critical">critical</option><option value="high" selected>high</option><option value="medium">medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Request forgery</td>
+      <td class="subclass">Server-side request forgery</td>
+      <td>Server-side request forgery via dynamic URL</td>
+      <td class="problem">An HTTP client is called with a URL that is not a fixed string. This line does not show request data. If a caller chooses the URL, the server will request hosts it can reach, including internal ones.</td>
+      <td class="where">vulnerable-rest-api-main/client/src/services/authorService.js:5 · getAuthors</td>
+      <td class="code"><code>return http.get(api.apiEndpoint + &quot;/authors&quot;);</code></td>
+      <td>high (0.90)</td>
+      <td>Confirm the host is a fixed origin</td>
+      <td><span class="chip status-block">block</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> An HTTP client is called with a non-literal URL. It looks for fetch, http.get, or axios.</p><p><span class="k">Clears when.</span> fixed origin is present.</p><p><span class="k">Cannot see.</span> Blind, metadata, rebinding, and redirect-following variants are not separated.</p><p>Clone likeness: 0.391. Patched twin: 0.563.</p><p class="muted">CWE-918 · js.ssrf.fetch · waiver id fd36a8c3da80b25e</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="high" data-risk-rank="1" data-class="Request forgery" data-subclass="Server-side request forgery" data-finding="Server-side request forgery via dynamic URL" data-problem="An HTTP client is called with a URL that is not a fixed string. This line does not show request data. If a caller chooses the URL, the server will request hosts it can reach, including internal ones." data-where="vulnerable-rest-api-main/client/src/services/authorService.js:9 · getAuthor" data-code="return http.get(api.apiEndpoint + &quot;/authors/&quot; + id);" data-confidence="high" data-confidence-rank="0" data-next="Confirm the host is a fixed origin" data-gate="block" data-gate-rank="0">
+    <tr>
+      <td><select class="risk-select risk-high" data-finding="146e83d1-22c8-44ad-9ad1-294f0454886c" aria-label="Risk rating"><option value="critical">critical</option><option value="high" selected>high</option><option value="medium">medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Request forgery</td>
+      <td class="subclass">Server-side request forgery</td>
+      <td>Server-side request forgery via dynamic URL</td>
+      <td class="problem">An HTTP client is called with a URL that is not a fixed string. This line does not show request data. If a caller chooses the URL, the server will request hosts it can reach, including internal ones.</td>
+      <td class="where">vulnerable-rest-api-main/client/src/services/authorService.js:9 · getAuthor</td>
+      <td class="code"><code>return http.get(api.apiEndpoint + &quot;/authors/&quot; + id);</code></td>
+      <td>high (0.90)</td>
+      <td>Confirm the host is a fixed origin</td>
+      <td><span class="chip status-block">block</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> An HTTP client is called with a non-literal URL. It looks for fetch, http.get, or axios.</p><p><span class="k">Clears when.</span> fixed origin is present.</p><p><span class="k">Cannot see.</span> Blind, metadata, rebinding, and redirect-following variants are not separated.</p><p>Clone likeness: 0.547. Patched twin: 0.672.</p><p class="muted">CWE-918 · js.ssrf.fetch · waiver id 32266ce81740665f</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="high" data-risk-rank="1" data-class="Request forgery" data-subclass="Server-side request forgery" data-finding="Server-side request forgery via dynamic URL" data-problem="An HTTP client is called with a URL that is not a fixed string. This line does not show request data. If a caller chooses the URL, the server will request hosts it can reach, including internal ones." data-where="vulnerable-rest-api-main/client/src/services/authorService.js:13 · addAuthor" data-code="return http.post(api.apiEndpoint + &quot;/authors&quot;, author);" data-confidence="high" data-confidence-rank="0" data-next="Confirm the host is a fixed origin" data-gate="block" data-gate-rank="0">
+    <tr>
+      <td><select class="risk-select risk-high" data-finding="f6cc0cd2-1b2c-4b62-a256-fefce46178e4" aria-label="Risk rating"><option value="critical">critical</option><option value="high" selected>high</option><option value="medium">medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Request forgery</td>
+      <td class="subclass">Server-side request forgery</td>
+      <td>Server-side request forgery via dynamic URL</td>
+      <td class="problem">An HTTP client is called with a URL that is not a fixed string. This line does not show request data. If a caller chooses the URL, the server will request hosts it can reach, including internal ones.</td>
+      <td class="where">vulnerable-rest-api-main/client/src/services/authorService.js:13 · addAuthor</td>
+      <td class="code"><code>return http.post(api.apiEndpoint + &quot;/authors&quot;, author);</code></td>
+      <td>high (0.90)</td>
+      <td>Confirm the host is a fixed origin</td>
+      <td><span class="chip status-block">block</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> An HTTP client is called with a non-literal URL. It looks for fetch, http.get, or axios.</p><p><span class="k">Clears when.</span> fixed origin is present.</p><p><span class="k">Cannot see.</span> Blind, metadata, rebinding, and redirect-following variants are not separated.</p><p>Clone likeness: 0.656. Patched twin: 0.656.</p><p class="muted">CWE-918 · js.ssrf.fetch · waiver id ef3005f5fac4e6ac</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="high" data-risk-rank="1" data-class="Request forgery" data-subclass="Server-side request forgery" data-finding="Server-side request forgery via dynamic URL" data-problem="An HTTP client is called with a URL that is not a fixed string. This line does not show request data. If a caller chooses the URL, the server will request hosts it can reach, including internal ones." data-where="vulnerable-rest-api-main/client/src/services/authService.js:10 · login" data-code="const {headers} = await http.post(api.apiEndpoint + '/auth', {username, password});" data-confidence="high" data-confidence-rank="0" data-next="Confirm the host is a fixed origin" data-gate="block" data-gate-rank="0">
+    <tr>
+      <td><select class="risk-select risk-high" data-finding="47ebfa5d-85d5-4a4f-8bf4-24e075e2f922" aria-label="Risk rating"><option value="critical">critical</option><option value="high" selected>high</option><option value="medium">medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Request forgery</td>
+      <td class="subclass">Server-side request forgery</td>
+      <td>Server-side request forgery via dynamic URL</td>
+      <td class="problem">An HTTP client is called with a URL that is not a fixed string. This line does not show request data. If a caller chooses the URL, the server will request hosts it can reach, including internal ones.</td>
+      <td class="where">vulnerable-rest-api-main/client/src/services/authService.js:10 · login</td>
+      <td class="code"><code>const {headers} = await http.post(api.apiEndpoint + '/auth', {username, password});</code></td>
+      <td>high (0.90)</td>
+      <td>Confirm the host is a fixed origin</td>
+      <td><span class="chip status-block">block</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> An HTTP client is called with a non-literal URL. It looks for fetch, http.get, or axios.</p><p><span class="k">Clears when.</span> fixed origin is present.</p><p><span class="k">Cannot see.</span> Blind, metadata, rebinding, and redirect-following variants are not separated.</p><p>Clone likeness: 0.297. Patched twin: 0.313.</p><p class="muted">CWE-918 · js.ssrf.fetch · waiver id 6136a6dc9c4b9cfa</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="high" data-risk-rank="1" data-class="Request forgery" data-subclass="Server-side request forgery" data-finding="Server-side request forgery via dynamic URL" data-problem="An HTTP client is called with a URL that is not a fixed string. This line does not show request data. If a caller chooses the URL, the server will request hosts it can reach, including internal ones." data-where="vulnerable-rest-api-main/client/src/services/authService.js:15 · adminLogin" data-code="const {headers} = await http.post(api.apiEndpoint + '/adminAuth', {username, password});" data-confidence="high" data-confidence-rank="0" data-next="Confirm the host is a fixed origin" data-gate="block" data-gate-rank="0">
+    <tr>
+      <td><select class="risk-select risk-high" data-finding="065c4a41-c6be-4c03-b86c-af5e3fa94eae" aria-label="Risk rating"><option value="critical">critical</option><option value="high" selected>high</option><option value="medium">medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Request forgery</td>
+      <td class="subclass">Server-side request forgery</td>
+      <td>Server-side request forgery via dynamic URL</td>
+      <td class="problem">An HTTP client is called with a URL that is not a fixed string. This line does not show request data. If a caller chooses the URL, the server will request hosts it can reach, including internal ones.</td>
+      <td class="where">vulnerable-rest-api-main/client/src/services/authService.js:15 · adminLogin</td>
+      <td class="code"><code>const {headers} = await http.post(api.apiEndpoint + '/adminAuth', {username, password});</code></td>
+      <td>high (0.90)</td>
+      <td>Confirm the host is a fixed origin</td>
+      <td><span class="chip status-block">block</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> An HTTP client is called with a non-literal URL. It looks for fetch, http.get, or axios.</p><p><span class="k">Clears when.</span> fixed origin is present.</p><p><span class="k">Cannot see.</span> Blind, metadata, rebinding, and redirect-following variants are not separated.</p><p>Clone likeness: 0.281. Patched twin: 0.313.</p><p class="muted">CWE-918 · js.ssrf.fetch · waiver id 6c0e173ec9fac013</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="high" data-risk-rank="1" data-class="Request forgery" data-subclass="Server-side request forgery" data-finding="Server-side request forgery via dynamic URL" data-problem="An HTTP client is called with a URL that is not a fixed string. This line does not show request data. If a caller chooses the URL, the server will request hosts it can reach, including internal ones." data-where="vulnerable-rest-api-main/client/src/services/bookService.js:5 · getBooks" data-code="return http.get(api.apiEndpoint + &quot;/books&quot;);" data-confidence="high" data-confidence-rank="0" data-next="Confirm the host is a fixed origin" data-gate="block" data-gate-rank="0">
+    <tr>
+      <td><select class="risk-select risk-high" data-finding="a02ea9bf-827a-4e05-83d5-938a4e575292" aria-label="Risk rating"><option value="critical">critical</option><option value="high" selected>high</option><option value="medium">medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Request forgery</td>
+      <td class="subclass">Server-side request forgery</td>
+      <td>Server-side request forgery via dynamic URL</td>
+      <td class="problem">An HTTP client is called with a URL that is not a fixed string. This line does not show request data. If a caller chooses the URL, the server will request hosts it can reach, including internal ones.</td>
+      <td class="where">vulnerable-rest-api-main/client/src/services/bookService.js:5 · getBooks</td>
+      <td class="code"><code>return http.get(api.apiEndpoint + &quot;/books&quot;);</code></td>
+      <td>high (0.90)</td>
+      <td>Confirm the host is a fixed origin</td>
+      <td><span class="chip status-block">block</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> An HTTP client is called with a non-literal URL. It looks for fetch, http.get, or axios.</p><p><span class="k">Clears when.</span> fixed origin is present.</p><p><span class="k">Cannot see.</span> Blind, metadata, rebinding, and redirect-following variants are not separated.</p><p>Clone likeness: 0.344. Patched twin: 0.438.</p><p class="muted">CWE-918 · js.ssrf.fetch · waiver id 07a008735359631a</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="high" data-risk-rank="1" data-class="Request forgery" data-subclass="Server-side request forgery" data-finding="Server-side request forgery via dynamic URL" data-problem="An HTTP client is called with a URL that is not a fixed string. This line does not show request data. If a caller chooses the URL, the server will request hosts it can reach, including internal ones." data-where="vulnerable-rest-api-main/client/src/services/bookService.js:9 · getBook" data-code="return http.get(api.apiEndpoint + &quot;/books/&quot; + id);" data-confidence="high" data-confidence-rank="0" data-next="Confirm the host is a fixed origin" data-gate="block" data-gate-rank="0">
+    <tr>
+      <td><select class="risk-select risk-high" data-finding="2e1ac745-7578-4456-af35-869cde0dc509" aria-label="Risk rating"><option value="critical">critical</option><option value="high" selected>high</option><option value="medium">medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Request forgery</td>
+      <td class="subclass">Server-side request forgery</td>
+      <td>Server-side request forgery via dynamic URL</td>
+      <td class="problem">An HTTP client is called with a URL that is not a fixed string. This line does not show request data. If a caller chooses the URL, the server will request hosts it can reach, including internal ones.</td>
+      <td class="where">vulnerable-rest-api-main/client/src/services/bookService.js:9 · getBook</td>
+      <td class="code"><code>return http.get(api.apiEndpoint + &quot;/books/&quot; + id);</code></td>
+      <td>high (0.90)</td>
+      <td>Confirm the host is a fixed origin</td>
+      <td><span class="chip status-block">block</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> An HTTP client is called with a non-literal URL. It looks for fetch, http.get, or axios.</p><p><span class="k">Clears when.</span> fixed origin is present.</p><p><span class="k">Cannot see.</span> Blind, metadata, rebinding, and redirect-following variants are not separated.</p><p>Clone likeness: 0.609. Patched twin: 0.781.</p><p class="muted">CWE-918 · js.ssrf.fetch · waiver id 7dcb1a530d1c080b</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="high" data-risk-rank="1" data-class="Request forgery" data-subclass="Server-side request forgery" data-finding="Server-side request forgery via dynamic URL" data-problem="An HTTP client is called with a URL that is not a fixed string. This line does not show request data. If a caller chooses the URL, the server will request hosts it can reach, including internal ones." data-where="vulnerable-rest-api-main/client/src/services/bookService.js:14 · addBook" data-code="return http.post(api.apiEndpoint + &quot;/books&quot;, book);" data-confidence="high" data-confidence-rank="0" data-next="Confirm the host is a fixed origin" data-gate="block" data-gate-rank="0">
+    <tr>
+      <td><select class="risk-select risk-high" data-finding="6aa77606-a817-4b3d-8f64-51306f577e62" aria-label="Risk rating"><option value="critical">critical</option><option value="high" selected>high</option><option value="medium">medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Request forgery</td>
+      <td class="subclass">Server-side request forgery</td>
+      <td>Server-side request forgery via dynamic URL</td>
+      <td class="problem">An HTTP client is called with a URL that is not a fixed string. This line does not show request data. If a caller chooses the URL, the server will request hosts it can reach, including internal ones.</td>
+      <td class="where">vulnerable-rest-api-main/client/src/services/bookService.js:14 · addBook</td>
+      <td class="code"><code>return http.post(api.apiEndpoint + &quot;/books&quot;, book);</code></td>
+      <td>high (0.90)</td>
+      <td>Confirm the host is a fixed origin</td>
+      <td><span class="chip status-block">block</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> An HTTP client is called with a non-literal URL. It looks for fetch, http.get, or axios.</p><p><span class="k">Clears when.</span> fixed origin is present.</p><p><span class="k">Cannot see.</span> Blind, metadata, rebinding, and redirect-following variants are not separated.</p><p>Clone likeness: 0.672. Patched twin: 0.672.</p><p class="muted">CWE-918 · js.ssrf.fetch · waiver id 6e2314b3a8e88839</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="high" data-risk-rank="1" data-class="Request forgery" data-subclass="Server-side request forgery" data-finding="Server-side request forgery via dynamic URL" data-problem="An HTTP client is called with a URL that is not a fixed string. This line does not show request data. If a caller chooses the URL, the server will request hosts it can reach, including internal ones." data-where="vulnerable-rest-api-main/client/src/services/categoryService.js:5 · getCategories" data-code="return http.get(api.apiEndpoint + &quot;/categories&quot;);" data-confidence="high" data-confidence-rank="0" data-next="Confirm the host is a fixed origin" data-gate="block" data-gate-rank="0">
+    <tr>
+      <td><select class="risk-select risk-high" data-finding="86d50e25-5ac1-4fc3-af01-99c98b228d3b" aria-label="Risk rating"><option value="critical">critical</option><option value="high" selected>high</option><option value="medium">medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Request forgery</td>
+      <td class="subclass">Server-side request forgery</td>
+      <td>Server-side request forgery via dynamic URL</td>
+      <td class="problem">An HTTP client is called with a URL that is not a fixed string. This line does not show request data. If a caller chooses the URL, the server will request hosts it can reach, including internal ones.</td>
+      <td class="where">vulnerable-rest-api-main/client/src/services/categoryService.js:5 · getCategories</td>
+      <td class="code"><code>return http.get(api.apiEndpoint + &quot;/categories&quot;);</code></td>
+      <td>high (0.90)</td>
+      <td>Confirm the host is a fixed origin</td>
+      <td><span class="chip status-block">block</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> An HTTP client is called with a non-literal URL. It looks for fetch, http.get, or axios.</p><p><span class="k">Clears when.</span> fixed origin is present.</p><p><span class="k">Cannot see.</span> Blind, metadata, rebinding, and redirect-following variants are not separated.</p><p>Clone likeness: 0.391. Patched twin: 0.469.</p><p class="muted">CWE-918 · js.ssrf.fetch · waiver id cc737d853edc0a43</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="high" data-risk-rank="1" data-class="Request forgery" data-subclass="Server-side request forgery" data-finding="Server-side request forgery via dynamic URL" data-problem="An HTTP client is called with a URL that is not a fixed string. This line does not show request data. If a caller chooses the URL, the server will request hosts it can reach, including internal ones." data-where="vulnerable-rest-api-main/client/src/services/thirdParty.js:5 · addSubscriber" data-code="return http.post(api.thirdParty, { email })" data-confidence="high" data-confidence-rank="0" data-next="Confirm the host is a fixed origin" data-gate="block" data-gate-rank="0">
+    <tr>
+      <td><select class="risk-select risk-high" data-finding="c563a4a4-b204-4d20-b6a2-9d603ee7e1d7" aria-label="Risk rating"><option value="critical">critical</option><option value="high" selected>high</option><option value="medium">medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Request forgery</td>
+      <td class="subclass">Server-side request forgery</td>
+      <td>Server-side request forgery via dynamic URL</td>
+      <td class="problem">An HTTP client is called with a URL that is not a fixed string. This line does not show request data. If a caller chooses the URL, the server will request hosts it can reach, including internal ones.</td>
+      <td class="where">vulnerable-rest-api-main/client/src/services/thirdParty.js:5 · addSubscriber</td>
+      <td class="code"><code>return http.post(api.thirdParty, {
+        email
+    })</code></td>
+      <td>high (0.90)</td>
+      <td>Confirm the host is a fixed origin</td>
+      <td><span class="chip status-block">block</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> An HTTP client is called with a non-literal URL. It looks for fetch, http.get, or axios.</p><p><span class="k">Clears when.</span> fixed origin is present.</p><p><span class="k">Cannot see.</span> Blind, metadata, rebinding, and redirect-following variants are not separated.</p><p>Clone likeness: 0.406. Patched twin: 0.469.</p><p class="muted">CWE-918 · js.ssrf.fetch · waiver id e0dc956bec20ea5e</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="high" data-risk-rank="1" data-class="Request forgery" data-subclass="Server-side request forgery" data-finding="Server-side request forgery via dynamic URL" data-problem="An HTTP client is called with a URL that is not a fixed string. This line does not show request data. If a caller chooses the URL, the server will request hosts it can reach, including internal ones." data-where="vulnerable-rest-api-main/client/src/services/userService.js:6 · register" data-code="return http.post(api.apiEndpoint + '/users',{ name: user.name, email: user.email, username: user.username, password: user.password, ref: ref…" data-confidence="high" data-confidence-rank="0" data-next="Confirm the host is a fixed origin" data-gate="block" data-gate-rank="0">
+    <tr>
+      <td><select class="risk-select risk-high" data-finding="0709a1e3-6a0a-4c9d-94eb-19434171acc2" aria-label="Risk rating"><option value="critical">critical</option><option value="high" selected>high</option><option value="medium">medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Request forgery</td>
+      <td class="subclass">Server-side request forgery</td>
+      <td>Server-side request forgery via dynamic URL</td>
+      <td class="problem">An HTTP client is called with a URL that is not a fixed string. This line does not show request data. If a caller chooses the URL, the server will request hosts it can reach, including internal ones.</td>
+      <td class="where">vulnerable-rest-api-main/client/src/services/userService.js:6 · register</td>
+      <td class="code"><code>return http.post(api.apiEndpoint + '/users',{
+            name: user.name,
+            email: user.email,
+            username: user.username,
+            password: user.password,
+            ref: ref…</code></td>
+      <td>high (0.90)</td>
+      <td>Confirm the host is a fixed origin</td>
+      <td><span class="chip status-block">block</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> An HTTP client is called with a non-literal URL. It looks for fetch, http.get, or axios.</p><p><span class="k">Clears when.</span> fixed origin is present.</p><p><span class="k">Cannot see.</span> Blind, metadata, rebinding, and redirect-following variants are not separated.</p><p>Clone likeness: 0.344. Patched twin: 0.375.</p><p class="muted">CWE-918 · js.ssrf.fetch · waiver id 75cab14c8c80ef30</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="high" data-risk-rank="1" data-class="Request forgery" data-subclass="Server-side request forgery" data-finding="Server-side request forgery via dynamic URL" data-problem="An HTTP client is called with a URL that is not a fixed string. This line does not show request data. If a caller chooses the URL, the server will request hosts it can reach, including internal ones." data-where="vulnerable-rest-api-main/client/src/services/userService.js:16 · getUsers" data-code="return http.get(api.apiEndpoint + &quot;/users&quot;);" data-confidence="high" data-confidence-rank="0" data-next="Confirm the host is a fixed origin" data-gate="block" data-gate-rank="0">
+    <tr>
+      <td><select class="risk-select risk-high" data-finding="cc44070d-d7f7-45e3-95f1-f2ff4e7dad0b" aria-label="Risk rating"><option value="critical">critical</option><option value="high" selected>high</option><option value="medium">medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Request forgery</td>
+      <td class="subclass">Server-side request forgery</td>
+      <td>Server-side request forgery via dynamic URL</td>
+      <td class="problem">An HTTP client is called with a URL that is not a fixed string. This line does not show request data. If a caller chooses the URL, the server will request hosts it can reach, including internal ones.</td>
+      <td class="where">vulnerable-rest-api-main/client/src/services/userService.js:16 · getUsers</td>
+      <td class="code"><code>return http.get(api.apiEndpoint + &quot;/users&quot;);</code></td>
+      <td>high (0.90)</td>
+      <td>Confirm the host is a fixed origin</td>
+      <td><span class="chip status-block">block</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> An HTTP client is called with a non-literal URL. It looks for fetch, http.get, or axios.</p><p><span class="k">Clears when.</span> fixed origin is present.</p><p><span class="k">Cannot see.</span> Blind, metadata, rebinding, and redirect-following variants are not separated.</p><p>Clone likeness: 0.406. Patched twin: 0.516.</p><p class="muted">CWE-918 · js.ssrf.fetch · waiver id a49dc605457c4f22</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="high" data-risk-rank="1" data-class="Request forgery" data-subclass="Server-side request forgery" data-finding="Server-side request forgery via dynamic URL" data-problem="An HTTP client is called with a URL that is not a fixed string. This line does not show request data. If a caller chooses the URL, the server will request hosts it can reach, including internal ones." data-where="vulnerable-rest-api-main/client/src/services/userService.js:21 · getUser" data-code="return http.get(api.apiEndpoint + &quot;/users/&quot; + userName);" data-confidence="high" data-confidence-rank="0" data-next="Confirm the host is a fixed origin" data-gate="block" data-gate-rank="0">
+    <tr>
+      <td><select class="risk-select risk-high" data-finding="3894daca-0015-407b-83bd-e81e38d021b5" aria-label="Risk rating"><option value="critical">critical</option><option value="high" selected>high</option><option value="medium">medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Request forgery</td>
+      <td class="subclass">Server-side request forgery</td>
+      <td>Server-side request forgery via dynamic URL</td>
+      <td class="problem">An HTTP client is called with a URL that is not a fixed string. This line does not show request data. If a caller chooses the URL, the server will request hosts it can reach, including internal ones.</td>
+      <td class="where">vulnerable-rest-api-main/client/src/services/userService.js:21 · getUser</td>
+      <td class="code"><code>return http.get(api.apiEndpoint + &quot;/users/&quot; + userName);</code></td>
+      <td>high (0.90)</td>
+      <td>Confirm the host is a fixed origin</td>
+      <td><span class="chip status-block">block</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> An HTTP client is called with a non-literal URL. It looks for fetch, http.get, or axios.</p><p><span class="k">Clears when.</span> fixed origin is present.</p><p><span class="k">Cannot see.</span> Blind, metadata, rebinding, and redirect-following variants are not separated.</p><p>Clone likeness: 0.547. Patched twin: 0.688.</p><p class="muted">CWE-918 · js.ssrf.fetch · waiver id d93dc5e73f05bbc0</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="high" data-risk-rank="1" data-class="Request forgery" data-subclass="Server-side request forgery" data-finding="Server-side request forgery via dynamic URL" data-problem="An HTTP client is called with a URL that is not a fixed string. This line does not show request data. If a caller chooses the URL, the server will request hosts it can reach, including internal ones." data-where="vulnerable-rest-api-main/client/src/services/userService.js:39 · sendLink" data-code="return http.post(api.apiEndpoint + &quot;/users/otp&quot;, user);" data-confidence="high" data-confidence-rank="0" data-next="Confirm the host is a fixed origin" data-gate="block" data-gate-rank="0">
+    <tr>
+      <td><select class="risk-select risk-high" data-finding="4733ef20-0e33-4189-b329-92f2023c5eea" aria-label="Risk rating"><option value="critical">critical</option><option value="high" selected>high</option><option value="medium">medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Request forgery</td>
+      <td class="subclass">Server-side request forgery</td>
+      <td>Server-side request forgery via dynamic URL</td>
+      <td class="problem">An HTTP client is called with a URL that is not a fixed string. This line does not show request data. If a caller chooses the URL, the server will request hosts it can reach, including internal ones.</td>
+      <td class="where">vulnerable-rest-api-main/client/src/services/userService.js:39 · sendLink</td>
+      <td class="code"><code>return http.post(api.apiEndpoint + &quot;/users/otp&quot;, user);</code></td>
+      <td>high (0.90)</td>
+      <td>Confirm the host is a fixed origin</td>
+      <td><span class="chip status-block">block</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> An HTTP client is called with a non-literal URL. It looks for fetch, http.get, or axios.</p><p><span class="k">Clears when.</span> fixed origin is present.</p><p><span class="k">Cannot see.</span> Blind, metadata, rebinding, and redirect-following variants are not separated.</p><p>Clone likeness: 0.672. Patched twin: 0.719.</p><p class="muted">CWE-918 · js.ssrf.fetch · waiver id 7fcea487921237ba</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="high" data-risk-rank="1" data-class="Request forgery" data-subclass="Server-side request forgery" data-finding="Server-side request forgery via dynamic URL" data-problem="An HTTP client is called with a URL that is not a fixed string. This line does not show request data. If a caller chooses the URL, the server will request hosts it can reach, including internal ones." data-where="vulnerable-rest-api-main/client/src/services/userService.js:44 · changePassword" data-code="return http.post(api.apiEndpoint + &quot;/users/verify&quot;, {password: value, user});" data-confidence="high" data-confidence-rank="0" data-next="Confirm the host is a fixed origin" data-gate="block" data-gate-rank="0">
+    <tr>
+      <td><select class="risk-select risk-high" data-finding="224d8bed-70c5-42c4-a8d2-a8f60a6f2133" aria-label="Risk rating"><option value="critical">critical</option><option value="high" selected>high</option><option value="medium">medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Request forgery</td>
+      <td class="subclass">Server-side request forgery</td>
+      <td>Server-side request forgery via dynamic URL</td>
+      <td class="problem">An HTTP client is called with a URL that is not a fixed string. This line does not show request data. If a caller chooses the URL, the server will request hosts it can reach, including internal ones.</td>
+      <td class="where">vulnerable-rest-api-main/client/src/services/userService.js:44 · changePassword</td>
+      <td class="code"><code>return http.post(api.apiEndpoint + &quot;/users/verify&quot;, {password: value, user});</code></td>
+      <td>high (0.90)</td>
+      <td>Confirm the host is a fixed origin</td>
+      <td><span class="chip status-block">block</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> An HTTP client is called with a non-literal URL. It looks for fetch, http.get, or axios.</p><p><span class="k">Clears when.</span> fixed origin is present.</p><p><span class="k">Cannot see.</span> Blind, metadata, rebinding, and redirect-following variants are not separated.</p><p>Clone likeness: 0.453. Patched twin: 0.531.</p><p class="muted">CWE-918 · js.ssrf.fetch · waiver id 3edc97befd8a1fca</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Sensitive data" data-subclass="Secret in web storage" data-finding="Secret stored in browser web storage" data-problem="A token or password is written to localStorage or sessionStorage. Any script on the page can read it." data-where="vulnerable-rest-api-main/client/src/services/authService.js:11 · login; vulnerable-rest-api-main/client/src/services/authService.js:16 · adminLogin" data-code="localStorage.setItem(token, headers['x-auth-token']); localStorage.setItem(token, headers['x-auth-token']);" data-confidence="medium" data-confidence-rank="1" data-next="Confirm this value is not a token or password" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="19a1afa0-c410-4820-ba21-97e79dcde386" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Sensitive data</td>
+      <td class="subclass">Secret in web storage</td>
+      <td>Secret stored in browser web storage</td>
+      <td class="problem">A token or password is written to localStorage or sessionStorage. Any script on the page can read it.</td>
+      <td class="where">vulnerable-rest-api-main/client/src/services/authService.js:11 · login; vulnerable-rest-api-main/client/src/services/authService.js:16 · adminLogin</td>
+      <td class="code"><code>localStorage.setItem(token, headers['x-auth-token']);
+
+localStorage.setItem(token, headers['x-auth-token']);</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm this value is not a token or password</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> setItem's arguments name a token, password, secret, session, or jwt. It looks for localStorage.setItem or sessionStorage.setItem.</p><p><span class="k">Clears when.</span> memory held by the server session is present.</p><p><span class="k">Cannot see.</span> Platform keystores and mobile private files are out of scope.</p><p>Clone likeness: 0.297. Patched twin: 0.313.</p><p class="muted">CWE-922 · js.browser.secret · waiver id f14e261b1d72a094</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Injection" data-subclass="Vulnerable clone" data-finding="Similar to vulnerable sample logPassword Similar to logPassword in triage" data-problem="This function is close to a known-vulnerable sample and far from its patched copy. The match is a lead. It does not show that the same flaw is reachable." data-where="vulnerable-rest-api-main/client/src/services/authService.js:19 · logout" data-code="export function logout(){" data-confidence="low" data-confidence-rank="2" data-next="Compare this function with the corpus sample" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="bbbc19f7-da78-4cbf-97ff-69dd657a9733" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Injection</td>
+      <td class="subclass">Vulnerable clone</td>
+      <td>Similar to vulnerable sample logPassword<button type="button" class="similar-toggle" aria-expanded="false">Similar to logPassword in triage</button></td>
+      <td class="problem">This function is close to a known-vulnerable sample and far from its patched copy. The match is a lead. It does not show that the same flaw is reachable.</td>
+      <td class="where">vulnerable-rest-api-main/client/src/services/authService.js:19 · logout</td>
+      <td class="code"><code>export function logout(){</code></td>
+      <td>low (0.813)</td>
+      <td>Compare this function with the corpus sample</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="similar-row" hidden><td colspan="10">
+      <table class="compare">
+        <thead><tr><th>Finding</th><th>Rating</th><th>Location</th><th>Code</th><th>Likeness</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Similar to vulnerable sample logPassword</td>
+            <td>Injection, medium</td>
+            <td>vulnerable-rest-api-main/client/src/services/authService.js:19 · logout</td>
+            <td class="code"><code>export function logout(){</code></td>
+            <td></td>
+          </tr>
+          <tr>
+            <td>Password, token, or request body written to a log</td>
+            <td>Sensitive data, medium</td>
+            <td>triage · src/unsafe.js · logPassword</td>
+            <td class="code"><code>console.log(password);</code></td>
+            <td>0.813 · patched twin 0.641</td>
+          </tr>
+        </tbody>
+      </table>
+      
+    </td></tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> The function is close to a vulnerable sample and far from its patched twin. It looks for corpus likeness.</p><p><span class="k">Clears when.</span> patched twin is present.</p><p><span class="k">Cannot see.</span> Likeness comments. It does not assign an exploit mechanism.</p><p>Similar to logPassword in triage. Likeness 0.813. Patched twin 0.641. This score does not set the gate.</p><p class="muted">CWE-89 · likeness.candidate · waiver id ed976e9128dfcc73</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Error handling" data-subclass="Information disclosure" data-finding="Express app has no error handler" data-problem="This file starts Express and does not register an error-handling middleware. The default handler sends the stack when NODE_ENV is not production." data-where="vulnerable-rest-api-main/server/index.js:4" data-code="const app = express();" data-confidence="medium" data-confidence-rank="1" data-next="Confirm an error handler sends a fixed message" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="30d47964-16e3-4e15-93ef-31d50efdfdc1" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Error handling</td>
+      <td class="subclass">Information disclosure</td>
+      <td>Express app has no error handler</td>
+      <td class="problem">This file starts Express and does not register an error-handling middleware. The default handler sends the stack when NODE_ENV is not production.</td>
+      <td class="where">vulnerable-rest-api-main/server/index.js:4</td>
+      <td class="code"><code>const app = express();</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm an error handler sends a fixed message</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> The file calls express() and never passes a function with four parameters to use(). It looks for express().</p><p><span class="k">Clears when.</span> four-argument middleware is present.</p><p><span class="k">Cannot see.</span> An error handler registered in another file is not visible.</p><p>Clone likeness: 0.188. Patched twin: 0.219.</p><p class="muted">CWE-209 · js.error.middleware · waiver id c70839654ba0267d</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Security configuration" data-subclass="Framework fingerprint" data-finding="X-Powered-By header left on" data-problem="This file starts Express and does not disable X-Powered-By. Responses advertise the framework." data-where="vulnerable-rest-api-main/server/index.js:4" data-code="const app = express();" data-confidence="medium" data-confidence-rank="1" data-next="Confirm the framework name header is disabled" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="18145c27-5f60-4617-9d04-6d81f0471ac3" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Security configuration</td>
+      <td class="subclass">Framework fingerprint</td>
+      <td>X-Powered-By header left on</td>
+      <td class="problem">This file starts Express and does not disable X-Powered-By. Responses advertise the framework.</td>
+      <td class="where">vulnerable-rest-api-main/server/index.js:4</td>
+      <td class="code"><code>const app = express();</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm the framework name header is disabled</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> The file calls express() and does not disable x-powered-by. It looks for express().</p><p><span class="k">Clears when.</span> disable x-powered-by is present.</p><p><span class="k">Cannot see.</span> A disable call in another file is not visible.</p><p>Clone likeness: 0.188. Patched twin: 0.219.</p><p class="muted">CWE-200 · js.config.powered-by · waiver id 7e5c874ef20895f0</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Error handling" data-subclass="Information disclosure" data-finding="Error detail sent to the client" data-problem="The response includes an error object, message, or stack. The client learns internal paths, queries, or library details." data-where="vulnerable-rest-api-main/server/middleware/auth.js:6 · auth" data-code="if(!token) return res.status(401).send({error: 'JWT token is not provided'});" data-confidence="medium" data-confidence-rank="1" data-next="Confirm the response uses a fixed message" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="3314dff0-7253-423a-9ac6-d799426fa8ef" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Error handling</td>
+      <td class="subclass">Information disclosure</td>
+      <td>Error detail sent to the client</td>
+      <td class="problem">The response includes an error object, message, or stack. The client learns internal paths, queries, or library details.</td>
+      <td class="where">vulnerable-rest-api-main/server/middleware/auth.js:6 · auth</td>
+      <td class="code"><code>if(!token) return res.status(401).send({error: 'JWT token is not provided'});</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm the response uses a fixed message</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> err, err.stack, or err.message is passed to the response. It looks for res.send, res.json, or res.end.</p><p><span class="k">Clears when.</span> fixed error message is present.</p><p><span class="k">Cannot see.</span> PII classes are not inferred without a data inventory.</p><p>Clone likeness: 0.281. Patched twin: 0.234.</p><p class="muted">CWE-209 · js.error.client · waiver id 954c1facfc5ad9c4</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Path and file" data-subclass="Local file inclusion" data-finding="Local file inclusion via dynamic path" data-problem="A filesystem call uses a path that is not a fixed string. This line does not show request data. If a caller can influence the path, they can read or overwrite files outside the intended directory." data-where="vulnerable-rest-api-main/server/middleware/auth.js:8 · auth" data-code="const publicKey = fs.readFileSync(`${__dirname}/../cert/pub_key.crt`);" data-confidence="medium" data-confidence-rank="1" data-next="Path is not a literal; no request input is visible in this call" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="1db5c423-e25e-4682-9034-cb0335e9a28e" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Path and file</td>
+      <td class="subclass">Local file inclusion</td>
+      <td>Local file inclusion via dynamic path</td>
+      <td class="problem">A filesystem call uses a path that is not a fixed string. This line does not show request data. If a caller can influence the path, they can read or overwrite files outside the intended directory.</td>
+      <td class="where">vulnerable-rest-api-main/server/middleware/auth.js:8 · auth</td>
+      <td class="code"><code>const publicKey = fs.readFileSync(`${__dirname}/../cert/pub_key.crt`);</code></td>
+      <td>medium (0.45)</td>
+      <td>Path is not a literal; no request input is visible in this call</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> A filesystem API receives a non-literal path. It looks for filesystem call.</p><p><span class="k">Clears when.</span> fixed path or final path segment only is present.</p><p><span class="k">Cannot see.</span> Archive entry names that never reach a filesystem call in this function are missed.</p><p>Clone likeness: 0.281. Patched twin: 0.234.</p><p class="muted">CWE-22 · detect-non-literal-fs-filename · waiver id c2a997721da8e5fc</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Error handling" data-subclass="Information disclosure" data-finding="Error detail sent to the client" data-problem="The response includes an error object, message, or stack. The client learns internal paths, queries, or library details." data-where="vulnerable-rest-api-main/server/middleware/auth.js:14 · auth" data-code="res.status(400).send({error: 'Invalid token'});" data-confidence="medium" data-confidence-rank="1" data-next="Confirm the response uses a fixed message" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="9e943e80-b0da-4247-a476-3de6135262ed" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Error handling</td>
+      <td class="subclass">Information disclosure</td>
+      <td>Error detail sent to the client</td>
+      <td class="problem">The response includes an error object, message, or stack. The client learns internal paths, queries, or library details.</td>
+      <td class="where">vulnerable-rest-api-main/server/middleware/auth.js:14 · auth</td>
+      <td class="code"><code>res.status(400).send({error: 'Invalid token'});</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm the response uses a fixed message</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> err, err.stack, or err.message is passed to the response. It looks for res.send, res.json, or res.end.</p><p><span class="k">Clears when.</span> fixed error message is present.</p><p><span class="k">Cannot see.</span> PII classes are not inferred without a data inventory.</p><p>Clone likeness: 0.281. Patched twin: 0.234.</p><p class="muted">CWE-209 · js.error.client · waiver id 9fbd46d518610de7</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Path and file" data-subclass="Local file inclusion" data-finding="Local file inclusion via dynamic path" data-problem="A filesystem call uses a path that is not a fixed string. This line does not show request data. If a caller can influence the path, they can read or overwrite files outside the intended directory." data-where="vulnerable-rest-api-main/server/models/user.js:37" data-code="const privateKey = fs.readFileSync(__dirname+'/../cert/private_key.key');" data-confidence="medium" data-confidence-rank="1" data-next="Path is not a literal; no request input is visible in this call" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="fa694bd9-0c01-4396-9252-93456d24a662" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Path and file</td>
+      <td class="subclass">Local file inclusion</td>
+      <td>Local file inclusion via dynamic path</td>
+      <td class="problem">A filesystem call uses a path that is not a fixed string. This line does not show request data. If a caller can influence the path, they can read or overwrite files outside the intended directory.</td>
+      <td class="where">vulnerable-rest-api-main/server/models/user.js:37</td>
+      <td class="code"><code>const privateKey = fs.readFileSync(__dirname+'/../cert/private_key.key');</code></td>
+      <td>medium (0.45)</td>
+      <td>Path is not a literal; no request input is visible in this call</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> A filesystem API receives a non-literal path. It looks for filesystem call.</p><p><span class="k">Clears when.</span> fixed path or final path segment only is present.</p><p><span class="k">Cannot see.</span> Archive entry names that never reach a filesystem call in this function are missed.</p><p>Clone likeness: 0.203. Patched twin: 0.203.</p><p class="muted">CWE-22 · detect-non-literal-fs-filename · waiver id c37bdc197f17d155</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Session" data-subclass="Cross-site request forgery" data-finding="State-changing route has no CSRF check" data-problem="This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user." data-where="vulnerable-rest-api-main/server/routes/adminAuth.js:8" data-code="router.post('/', async (req, res)=&gt;{ let user = await User.findOne({username: req.body.username}); if(!user) return res.status(400).send('Invalid username or password'); if(user.role !==…" data-confidence="medium" data-confidence-rank="1" data-next="Confirm a CSRF check is mounted for this route" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="4ec12cd4-dfc1-44b1-8f88-851fee44ba2c" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Session</td>
+      <td class="subclass">Cross-site request forgery</td>
+      <td>State-changing route has no CSRF check</td>
+      <td class="problem">This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user.</td>
+      <td class="where">vulnerable-rest-api-main/server/routes/adminAuth.js:8</td>
+      <td class="code"><code>router.post('/', async (req, res)=&gt;{
+
+    let user = await User.findOne({username: req.body.username});
+    if(!user) return res.status(400).send('Invalid username or password');
+
+    if(user.role !==…</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm a CSRF check is mounted for this route</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> The file registers a state-changing route and never mentions csrf or csurf. It looks for post, put, patch, or delete.</p><p><span class="k">Clears when.</span> csrf middleware is present.</p><p><span class="k">Cannot see.</span> A check mounted in another file is not visible. Every state-changing route in the file is reported.</p><p>Clone likeness: 0.266. Patched twin: 0.219.</p><p class="muted">CWE-352 · js.csrf.missing · waiver id bc3b510898ad4c4d</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Path and file" data-subclass="Local file inclusion" data-finding="Local file inclusion via dynamic path" data-problem="A filesystem call uses a path that is not a fixed string. This line does not show request data. If a caller can influence the path, they can read or overwrite files outside the intended directory." data-where="vulnerable-rest-api-main/server/routes/adminAuth.js:19" data-code="const privateKey = fs.readFileSync(__dirname+'/../cert/private_key.key');" data-confidence="medium" data-confidence-rank="1" data-next="Path is not a literal; no request input is visible in this call" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="e0feae1f-367a-47a9-9244-013f2101b88b" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Path and file</td>
+      <td class="subclass">Local file inclusion</td>
+      <td>Local file inclusion via dynamic path</td>
+      <td class="problem">A filesystem call uses a path that is not a fixed string. This line does not show request data. If a caller can influence the path, they can read or overwrite files outside the intended directory.</td>
+      <td class="where">vulnerable-rest-api-main/server/routes/adminAuth.js:19</td>
+      <td class="code"><code>const privateKey = fs.readFileSync(__dirname+'/../cert/private_key.key');</code></td>
+      <td>medium (0.45)</td>
+      <td>Path is not a literal; no request input is visible in this call</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> A filesystem API receives a non-literal path. It looks for filesystem call.</p><p><span class="k">Clears when.</span> fixed path or final path segment only is present.</p><p><span class="k">Cannot see.</span> Archive entry names that never reach a filesystem call in this function are missed.</p><p>Clone likeness: 0.266. Patched twin: 0.219.</p><p class="muted">CWE-22 · detect-non-literal-fs-filename · waiver id 0623557daa9b9187</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Session" data-subclass="Cross-site request forgery" data-finding="State-changing route has no CSRF check" data-problem="This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user." data-where="vulnerable-rest-api-main/server/routes/auth.js:7" data-code="router.post('/', async (req, res)=&gt;{ let user = await User.findOne({'username':req.body.username}); if(!user) return res.status(400).send('Invalid Username or Password'); const validPass…" data-confidence="medium" data-confidence-rank="1" data-next="Confirm a CSRF check is mounted for this route" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="eafd9918-f0c5-477a-b433-41f56b1d137a" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Session</td>
+      <td class="subclass">Cross-site request forgery</td>
+      <td>State-changing route has no CSRF check</td>
+      <td class="problem">This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user.</td>
+      <td class="where">vulnerable-rest-api-main/server/routes/auth.js:7</td>
+      <td class="code"><code>router.post('/', async (req, res)=&gt;{
+
+    let user = await User.findOne({'username':req.body.username});
+    if(!user) return res.status(400).send('Invalid Username or Password');
+
+    const validPass…</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm a CSRF check is mounted for this route</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> The file registers a state-changing route and never mentions csrf or csurf. It looks for post, put, patch, or delete.</p><p><span class="k">Clears when.</span> csrf middleware is present.</p><p><span class="k">Cannot see.</span> A check mounted in another file is not visible. Every state-changing route in the file is reported.</p><p>Clone likeness: 0.297. Patched twin: 0.234.</p><p class="muted">CWE-352 · js.csrf.missing · waiver id 5fd6681509ec95e6</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Sensitive data" data-subclass="Sensitive data in response" data-finding="Full record sent in a JSON response" data-problem="The query does not limit columns, and the result is sent as JSON. A user record includes the password hash." data-where="vulnerable-rest-api-main/server/routes/auth.js:9" data-code="let user = await User.findOne({'username':req.body.username});" data-confidence="medium" data-confidence-rank="1" data-next="Confirm the response lists only the fields the client needs" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="7051278b-6cc7-488a-8f33-14ce60bf8607" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Sensitive data</td>
+      <td class="subclass">Sensitive data in response</td>
+      <td>Full record sent in a JSON response</td>
+      <td class="problem">The query does not limit columns, and the result is sent as JSON. A user record includes the password hash.</td>
+      <td class="where">vulnerable-rest-api-main/server/routes/auth.js:9</td>
+      <td class="code"><code>let user = await User.findOne({'username':req.body.username});</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm the response lists only the fields the client needs</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> A model query with no attributes list is sent with res.json or res.send in the same continuation. It looks for findAll, find, findOne, or res.json.</p><p><span class="k">Clears when.</span> attributes list is present.</p><p><span class="k">Cannot see.</span> A render call is not a JSON response. The column names are not read from the model.</p><p>Clone likeness: 0.297. Patched twin: 0.234.</p><p class="muted">CWE-200 · js.sensitive.response · waiver id 40a45b6b9bdce375</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Error handling" data-subclass="Information disclosure" data-finding="Error detail sent to the client" data-problem="The response includes an error object, message, or stack. The client learns internal paths, queries, or library details." data-where="vulnerable-rest-api-main/server/routes/auth.js:13" data-code="if(!validPassword) return res.status(400).send({error: 'Invalid Username or Password',userId: user._id});" data-confidence="medium" data-confidence-rank="1" data-next="Confirm the response uses a fixed message" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="cdd34a47-6ea6-41da-be2e-642033aeadfb" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Error handling</td>
+      <td class="subclass">Information disclosure</td>
+      <td>Error detail sent to the client</td>
+      <td class="problem">The response includes an error object, message, or stack. The client learns internal paths, queries, or library details.</td>
+      <td class="where">vulnerable-rest-api-main/server/routes/auth.js:13</td>
+      <td class="code"><code>if(!validPassword) return res.status(400).send({error: 'Invalid Username or Password',userId: user._id});</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm the response uses a fixed message</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> err, err.stack, or err.message is passed to the response. It looks for res.send, res.json, or res.end.</p><p><span class="k">Clears when.</span> fixed error message is present.</p><p><span class="k">Cannot see.</span> PII classes are not inferred without a data inventory.</p><p>Clone likeness: 0.297. Patched twin: 0.234.</p><p class="muted">CWE-209 · js.error.client · waiver id 5160654f987a087a</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Sensitive data" data-subclass="Sensitive data in response" data-finding="Full record sent in a JSON response" data-problem="The query does not limit columns, and the result is sent as JSON. A user record includes the password hash." data-where="vulnerable-rest-api-main/server/routes/authors.js:8" data-code="const authors = await Author.find();" data-confidence="medium" data-confidence-rank="1" data-next="Confirm the response lists only the fields the client needs" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="865d7c1d-ab5c-4de2-8e83-ac3007581ad7" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Sensitive data</td>
+      <td class="subclass">Sensitive data in response</td>
+      <td>Full record sent in a JSON response</td>
+      <td class="problem">The query does not limit columns, and the result is sent as JSON. A user record includes the password hash.</td>
+      <td class="where">vulnerable-rest-api-main/server/routes/authors.js:8</td>
+      <td class="code"><code>const authors = await Author.find();</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm the response lists only the fields the client needs</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> A model query with no attributes list is sent with res.json or res.send in the same continuation. It looks for findAll, find, findOne, or res.json.</p><p><span class="k">Clears when.</span> attributes list is present.</p><p><span class="k">Cannot see.</span> A render call is not a JSON response. The column names are not read from the model.</p><p>Clone likeness: 0.281. Patched twin: 0.188.</p><p class="muted">CWE-200 · js.sensitive.response · waiver id 4b1091f9eba7d44d</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Session" data-subclass="Cross-site request forgery" data-finding="State-changing route has no CSRF check" data-problem="This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user." data-where="vulnerable-rest-api-main/server/routes/authors.js:18" data-code="router.post('/', auth, async(req,res)=&gt;{ let author = await Author.findOne({email: req.body.email}); if(author) return res.status(400).send('Author is Already Existed!'); author = new Aut…" data-confidence="medium" data-confidence-rank="1" data-next="Confirm a CSRF check is mounted for this route" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="ee8ea002-d1cb-4a02-a217-ea5cb84ad6db" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Session</td>
+      <td class="subclass">Cross-site request forgery</td>
+      <td>State-changing route has no CSRF check</td>
+      <td class="problem">This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user.</td>
+      <td class="where">vulnerable-rest-api-main/server/routes/authors.js:18</td>
+      <td class="code"><code>router.post('/', auth, async(req,res)=&gt;{
+    let author = await Author.findOne({email: req.body.email});
+    if(author) return res.status(400).send('Author is Already Existed!');
+
+    author = new Aut…</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm a CSRF check is mounted for this route</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> The file registers a state-changing route and never mentions csrf or csurf. It looks for post, put, patch, or delete.</p><p><span class="k">Clears when.</span> csrf middleware is present.</p><p><span class="k">Cannot see.</span> A check mounted in another file is not visible. Every state-changing route in the file is reported.</p><p>Clone likeness: 0.281. Patched twin: 0.188.</p><p class="muted">CWE-352 · js.csrf.missing · waiver id 2d3409d0031b7ee9</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Sensitive data" data-subclass="Sensitive data in response" data-finding="Full record sent in a JSON response" data-problem="The query does not limit columns, and the result is sent as JSON. A user record includes the password hash." data-where="vulnerable-rest-api-main/server/routes/authors.js:19" data-code="let author = await Author.findOne({email: req.body.email});" data-confidence="medium" data-confidence-rank="1" data-next="Confirm the response lists only the fields the client needs" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="1f67b352-fa79-4361-9a9d-159e2c143b82" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Sensitive data</td>
+      <td class="subclass">Sensitive data in response</td>
+      <td>Full record sent in a JSON response</td>
+      <td class="problem">The query does not limit columns, and the result is sent as JSON. A user record includes the password hash.</td>
+      <td class="where">vulnerable-rest-api-main/server/routes/authors.js:19</td>
+      <td class="code"><code>let author = await Author.findOne({email: req.body.email});</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm the response lists only the fields the client needs</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> A model query with no attributes list is sent with res.json or res.send in the same continuation. It looks for findAll, find, findOne, or res.json.</p><p><span class="k">Clears when.</span> attributes list is present.</p><p><span class="k">Cannot see.</span> A render call is not a JSON response. The column names are not read from the model.</p><p>Clone likeness: 0.281. Patched twin: 0.188.</p><p class="muted">CWE-200 · js.sensitive.response · waiver id 15b8ecf502aa6a0b</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Session" data-subclass="Cross-site request forgery" data-finding="State-changing route has no CSRF check" data-problem="This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user." data-where="vulnerable-rest-api-main/server/routes/authors.js:27" data-code="router.put('/:id', auth, async(req,res)=&gt;{ await Author.findByIdAndUpdate({_id: req.params.id}, { $set: { name: req.body.name, email: req.body.email, ab…" data-confidence="medium" data-confidence-rank="1" data-next="Confirm a CSRF check is mounted for this route" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="65f00b9f-6766-4e28-be37-559c9a68fc35" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Session</td>
+      <td class="subclass">Cross-site request forgery</td>
+      <td>State-changing route has no CSRF check</td>
+      <td class="problem">This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user.</td>
+      <td class="where">vulnerable-rest-api-main/server/routes/authors.js:27</td>
+      <td class="code"><code>router.put('/:id', auth, async(req,res)=&gt;{
+    await Author.findByIdAndUpdate({_id: req.params.id}, {
+        $set: {
+            name: req.body.name,
+            email: req.body.email,
+            ab…</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm a CSRF check is mounted for this route</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> The file registers a state-changing route and never mentions csrf or csurf. It looks for post, put, patch, or delete.</p><p><span class="k">Clears when.</span> csrf middleware is present.</p><p><span class="k">Cannot see.</span> A check mounted in another file is not visible. Every state-changing route in the file is reported.</p><p>Clone likeness: 0.281. Patched twin: 0.188.</p><p class="muted">CWE-352 · js.csrf.missing · waiver id d1e1c78a69dc3d8c</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Session" data-subclass="Cross-site request forgery" data-finding="State-changing route has no CSRF check" data-problem="This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user." data-where="vulnerable-rest-api-main/server/routes/authors.js:40" data-code="router.delete('/:id', auth, async(req,res)=&gt;{ const author = await Author.findByIdAndRemove({_id: req.params.id}); if(!author) return res.status(404).send('The author with the given ID was not…" data-confidence="medium" data-confidence-rank="1" data-next="Confirm a CSRF check is mounted for this route" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="6c5eb01c-dc3a-436f-8288-ba5c8b737101" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Session</td>
+      <td class="subclass">Cross-site request forgery</td>
+      <td>State-changing route has no CSRF check</td>
+      <td class="problem">This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user.</td>
+      <td class="where">vulnerable-rest-api-main/server/routes/authors.js:40</td>
+      <td class="code"><code>router.delete('/:id', auth, async(req,res)=&gt;{
+    const author = await Author.findByIdAndRemove({_id: req.params.id});
+    if(!author) return res.status(404).send('The author with the given ID was not…</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm a CSRF check is mounted for this route</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> The file registers a state-changing route and never mentions csrf or csurf. It looks for post, put, patch, or delete.</p><p><span class="k">Clears when.</span> csrf middleware is present.</p><p><span class="k">Cannot see.</span> A check mounted in another file is not visible. Every state-changing route in the file is reported.</p><p>Clone likeness: 0.281. Patched twin: 0.188.</p><p class="muted">CWE-352 · js.csrf.missing · waiver id 2b26f17f080107f3</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Session" data-subclass="Cross-site request forgery" data-finding="State-changing route has no CSRF check" data-problem="This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user." data-where="vulnerable-rest-api-main/server/routes/books.js:16" data-code="router.post('/', auth, async(req,res)=&gt;{ const book = new Book(req.body); await book.save(); res.status(201).send(book); })" data-confidence="medium" data-confidence-rank="1" data-next="Confirm a CSRF check is mounted for this route" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="af6c10d4-b39c-4782-a8eb-897e426dc383" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Session</td>
+      <td class="subclass">Cross-site request forgery</td>
+      <td>State-changing route has no CSRF check</td>
+      <td class="problem">This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user.</td>
+      <td class="where">vulnerable-rest-api-main/server/routes/books.js:16</td>
+      <td class="code"><code>router.post('/', auth, async(req,res)=&gt;{
+    const book = new Book(req.body);
+    await book.save();
+    res.status(201).send(book);
+})</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm a CSRF check is mounted for this route</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> The file registers a state-changing route and never mentions csrf or csurf. It looks for post, put, patch, or delete.</p><p><span class="k">Clears when.</span> csrf middleware is present.</p><p><span class="k">Cannot see.</span> A check mounted in another file is not visible. Every state-changing route in the file is reported.</p><p>Clone likeness: 0.266. Patched twin: 0.203.</p><p class="muted">CWE-352 · js.csrf.missing · waiver id 315c9170cc40e1c8</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Session" data-subclass="Cross-site request forgery" data-finding="State-changing route has no CSRF check" data-problem="This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user." data-where="vulnerable-rest-api-main/server/routes/books.js:22" data-code="router.put('/:id', auth, async(req,res)=&gt;{ const book = await Book.findByIdAndUpdate({_id: req.params.id}, { $set: { title: req.body.title, category: req.body.categ…" data-confidence="medium" data-confidence-rank="1" data-next="Confirm a CSRF check is mounted for this route" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="3cbb1bd3-ac07-4197-9ab6-844f42d3f520" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Session</td>
+      <td class="subclass">Cross-site request forgery</td>
+      <td>State-changing route has no CSRF check</td>
+      <td class="problem">This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user.</td>
+      <td class="where">vulnerable-rest-api-main/server/routes/books.js:22</td>
+      <td class="code"><code>router.put('/:id', auth, async(req,res)=&gt;{
+    const book = await Book.findByIdAndUpdate({_id: req.params.id}, {
+        $set: {
+            title: req.body.title,
+            category: req.body.categ…</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm a CSRF check is mounted for this route</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> The file registers a state-changing route and never mentions csrf or csurf. It looks for post, put, patch, or delete.</p><p><span class="k">Clears when.</span> csrf middleware is present.</p><p><span class="k">Cannot see.</span> A check mounted in another file is not visible. Every state-changing route in the file is reported.</p><p>Clone likeness: 0.266. Patched twin: 0.203.</p><p class="muted">CWE-352 · js.csrf.missing · waiver id a124606c38d4fd7a</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Session" data-subclass="Cross-site request forgery" data-finding="State-changing route has no CSRF check" data-problem="This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user." data-where="vulnerable-rest-api-main/server/routes/books.js:35" data-code="router.delete('/:id', auth ,async(req,res)=&gt;{ const book = await Book.findByIdAndRemove(req.params.id); if(!book) return res.status(404).send(&quot;The book with the given ID was not found&quot;); …" data-confidence="medium" data-confidence-rank="1" data-next="Confirm a CSRF check is mounted for this route" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="944924b6-3f7b-4166-b408-0276c0c8d3ad" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Session</td>
+      <td class="subclass">Cross-site request forgery</td>
+      <td>State-changing route has no CSRF check</td>
+      <td class="problem">This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user.</td>
+      <td class="where">vulnerable-rest-api-main/server/routes/books.js:35</td>
+      <td class="code"><code>router.delete('/:id', auth ,async(req,res)=&gt;{
+    const book = await Book.findByIdAndRemove(req.params.id);
+    if(!book) return res.status(404).send(&quot;The book with the given ID was not found&quot;);
+
+    …</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm a CSRF check is mounted for this route</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> The file registers a state-changing route and never mentions csrf or csurf. It looks for post, put, patch, or delete.</p><p><span class="k">Clears when.</span> csrf middleware is present.</p><p><span class="k">Cannot see.</span> A check mounted in another file is not visible. Every state-changing route in the file is reported.</p><p>Clone likeness: 0.266. Patched twin: 0.203.</p><p class="muted">CWE-352 · js.csrf.missing · waiver id fb435e561c2ba398</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Sensitive data" data-subclass="Sensitive data in response" data-finding="Full record sent in a JSON response" data-problem="The query does not limit columns, and the result is sent as JSON. A user record includes the password hash." data-where="vulnerable-rest-api-main/server/routes/categories.js:7" data-code="const categories = await Category.find();" data-confidence="medium" data-confidence-rank="1" data-next="Confirm the response lists only the fields the client needs" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="3fc0a7a8-02da-444d-b013-55357ac149e2" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Sensitive data</td>
+      <td class="subclass">Sensitive data in response</td>
+      <td>Full record sent in a JSON response</td>
+      <td class="problem">The query does not limit columns, and the result is sent as JSON. A user record includes the password hash.</td>
+      <td class="where">vulnerable-rest-api-main/server/routes/categories.js:7</td>
+      <td class="code"><code>const categories = await Category.find();</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm the response lists only the fields the client needs</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> A model query with no attributes list is sent with res.json or res.send in the same continuation. It looks for findAll, find, findOne, or res.json.</p><p><span class="k">Clears when.</span> attributes list is present.</p><p><span class="k">Cannot see.</span> A render call is not a JSON response. The column names are not read from the model.</p><p>Clone likeness: 0.188. Patched twin: 0.188.</p><p class="muted">CWE-200 · js.sensitive.response · waiver id cc3f71c98348a4c0</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Sensitive data" data-subclass="Sensitive data in response" data-finding="Full record sent in a JSON response" data-problem="The query does not limit columns, and the result is sent as JSON. A user record includes the password hash." data-where="vulnerable-rest-api-main/server/routes/me.js:10" data-code="const user = await User.findOne({_id: JSON.parse(decodeURI(req.query.id))});" data-confidence="medium" data-confidence-rank="1" data-next="Confirm the response lists only the fields the client needs" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="69ad34ae-b6e5-4ac8-9461-40a0d509af54" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Sensitive data</td>
+      <td class="subclass">Sensitive data in response</td>
+      <td>Full record sent in a JSON response</td>
+      <td class="problem">The query does not limit columns, and the result is sent as JSON. A user record includes the password hash.</td>
+      <td class="where">vulnerable-rest-api-main/server/routes/me.js:10</td>
+      <td class="code"><code>const user = await User.findOne({_id: JSON.parse(decodeURI(req.query.id))});</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm the response lists only the fields the client needs</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> A model query with no attributes list is sent with res.json or res.send in the same continuation. It looks for findAll, find, findOne, or res.json.</p><p><span class="k">Clears when.</span> attributes list is present.</p><p><span class="k">Cannot see.</span> A render call is not a JSON response. The column names are not read from the model.</p><p>Clone likeness: 0.234. Patched twin: 0.203.</p><p class="muted">CWE-200 · js.sensitive.response · waiver id 9871913b698aa545</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Sensitive data" data-subclass="Sensitive data in response" data-finding="Full record sent in a JSON response" data-problem="The query does not limit columns, and the result is sent as JSON. A user record includes the password hash." data-where="vulnerable-rest-api-main/server/routes/me.js:15" data-code="const user = await User.findOne({username: req.user.payload.username});" data-confidence="medium" data-confidence-rank="1" data-next="Confirm the response lists only the fields the client needs" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="2a7cb0b4-442d-49a0-be90-336dd61af643" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Sensitive data</td>
+      <td class="subclass">Sensitive data in response</td>
+      <td>Full record sent in a JSON response</td>
+      <td class="problem">The query does not limit columns, and the result is sent as JSON. A user record includes the password hash.</td>
+      <td class="where">vulnerable-rest-api-main/server/routes/me.js:15</td>
+      <td class="code"><code>const user = await User.findOne({username: req.user.payload.username});</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm the response lists only the fields the client needs</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> A model query with no attributes list is sent with res.json or res.send in the same continuation. It looks for findAll, find, findOne, or res.json.</p><p><span class="k">Clears when.</span> attributes list is present.</p><p><span class="k">Cannot see.</span> A render call is not a JSON response. The column names are not read from the model.</p><p>Clone likeness: 0.234. Patched twin: 0.203.</p><p class="muted">CWE-200 · js.sensitive.response · waiver id 68275e0dadd155c2</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Sensitive data" data-subclass="Sensitive data in response" data-finding="Full record sent in a JSON response" data-problem="The query does not limit columns, and the result is sent as JSON. A user record includes the password hash." data-where="vulnerable-rest-api-main/server/routes/users.js:15" data-code="const users = await User.find();" data-confidence="medium" data-confidence-rank="1" data-next="Confirm the response lists only the fields the client needs" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="1cfe9964-7db7-49fe-94f2-35e99d5da854" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Sensitive data</td>
+      <td class="subclass">Sensitive data in response</td>
+      <td>Full record sent in a JSON response</td>
+      <td class="problem">The query does not limit columns, and the result is sent as JSON. A user record includes the password hash.</td>
+      <td class="where">vulnerable-rest-api-main/server/routes/users.js:15</td>
+      <td class="code"><code>const users = await User.find();</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm the response lists only the fields the client needs</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> A model query with no attributes list is sent with res.json or res.send in the same continuation. It looks for findAll, find, findOne, or res.json.</p><p><span class="k">Clears when.</span> attributes list is present.</p><p><span class="k">Cannot see.</span> A render call is not a JSON response. The column names are not read from the model.</p><p>Clone likeness: 0.141. Patched twin: 0.125.</p><p class="muted">CWE-200 · js.sensitive.response · waiver id c818578d7b699c98</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Sensitive data" data-subclass="Sensitive data in response" data-finding="Full record sent in a JSON response" data-problem="The query does not limit columns, and the result is sent as JSON. A user record includes the password hash." data-where="vulnerable-rest-api-main/server/routes/users.js:22" data-code="const user = await User.findOne({'username':req.params.name});" data-confidence="medium" data-confidence-rank="1" data-next="Confirm the response lists only the fields the client needs" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="af371f14-1661-436c-bf64-b3f58705f4e7" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Sensitive data</td>
+      <td class="subclass">Sensitive data in response</td>
+      <td>Full record sent in a JSON response</td>
+      <td class="problem">The query does not limit columns, and the result is sent as JSON. A user record includes the password hash.</td>
+      <td class="where">vulnerable-rest-api-main/server/routes/users.js:22</td>
+      <td class="code"><code>const user = await User.findOne({'username':req.params.name});</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm the response lists only the fields the client needs</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> A model query with no attributes list is sent with res.json or res.send in the same continuation. It looks for findAll, find, findOne, or res.json.</p><p><span class="k">Clears when.</span> attributes list is present.</p><p><span class="k">Cannot see.</span> A render call is not a JSON response. The column names are not read from the model.</p><p>Clone likeness: 0.141. Patched twin: 0.125.</p><p class="muted">CWE-200 · js.sensitive.response · waiver id 0c8ccd168ba131aa</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Session" data-subclass="Cross-site request forgery" data-finding="State-changing route has no CSRF check" data-problem="This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user." data-where="vulnerable-rest-api-main/server/routes/users.js:28" data-code="router.post('/', async (req, res)=&gt;{ let user = await User.findOne({email: req.body.email}); if(user) return res.status(400).send('Invalid email or password'); user = new User(req.body);…" data-confidence="medium" data-confidence-rank="1" data-next="Confirm a CSRF check is mounted for this route" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="8c723f14-5aa7-4146-b011-0c82fc58cce1" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Session</td>
+      <td class="subclass">Cross-site request forgery</td>
+      <td>State-changing route has no CSRF check</td>
+      <td class="problem">This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user.</td>
+      <td class="where">vulnerable-rest-api-main/server/routes/users.js:28</td>
+      <td class="code"><code>router.post('/', async (req, res)=&gt;{
+
+    let user = await User.findOne({email: req.body.email});
+    if(user) return res.status(400).send('Invalid email or password');
+
+    user = new User(req.body);…</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm a CSRF check is mounted for this route</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> The file registers a state-changing route and never mentions csrf or csurf. It looks for post, put, patch, or delete.</p><p><span class="k">Clears when.</span> csrf middleware is present.</p><p><span class="k">Cannot see.</span> A check mounted in another file is not visible. Every state-changing route in the file is reported.</p><p>Clone likeness: 0.141. Patched twin: 0.125.</p><p class="muted">CWE-352 · js.csrf.missing · waiver id 3f0131a9b838b221</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Sensitive data" data-subclass="Sensitive data in response" data-finding="Full record sent in a JSON response" data-problem="The query does not limit columns, and the result is sent as JSON. A user record includes the password hash." data-where="vulnerable-rest-api-main/server/routes/users.js:30; vulnerable-rest-api-main/server/routes/users.js:70" data-code="let user = await User.findOne({email: req.body.email}); const user = await User.findOne({username: req.body.username});" data-confidence="medium" data-confidence-rank="1" data-next="Confirm the response lists only the fields the client needs" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="16dff57b-3113-4e59-ae6b-acefc9c91b11" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Sensitive data</td>
+      <td class="subclass">Sensitive data in response</td>
+      <td>Full record sent in a JSON response</td>
+      <td class="problem">The query does not limit columns, and the result is sent as JSON. A user record includes the password hash.</td>
+      <td class="where">vulnerable-rest-api-main/server/routes/users.js:30; vulnerable-rest-api-main/server/routes/users.js:70</td>
+      <td class="code"><code>let user = await User.findOne({email: req.body.email});
+
+const user = await User.findOne({username: req.body.username});</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm the response lists only the fields the client needs</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> A model query with no attributes list is sent with res.json or res.send in the same continuation. It looks for findAll, find, findOne, or res.json.</p><p><span class="k">Clears when.</span> attributes list is present.</p><p><span class="k">Cannot see.</span> A render call is not a JSON response. The column names are not read from the model.</p><p>Clone likeness: 0.141. Patched twin: 0.125.</p><p class="muted">CWE-200 · js.sensitive.response · waiver id 308535beb5d4a47d</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Session" data-subclass="Cross-site request forgery" data-finding="State-changing route has no CSRF check" data-problem="This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user." data-where="vulnerable-rest-api-main/server/routes/users.js:46" data-code="router.put('/:id', [auth, validateObjectId], async(req, res)=&gt;{ let user = await User.findOne({_id: req.params.id}); var domain; await needle('get', req.body.url) .then(function(…" data-confidence="medium" data-confidence-rank="1" data-next="Confirm a CSRF check is mounted for this route" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="67475272-3d7b-4e64-bb2e-78e84756aabf" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Session</td>
+      <td class="subclass">Cross-site request forgery</td>
+      <td>State-changing route has no CSRF check</td>
+      <td class="problem">This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user.</td>
+      <td class="where">vulnerable-rest-api-main/server/routes/users.js:46</td>
+      <td class="code"><code>router.put('/:id', [auth, validateObjectId], async(req, res)=&gt;{
+
+    let user = await User.findOne({_id: req.params.id});
+
+    var domain;
+    await needle('get', req.body.url)
+        .then(function(…</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm a CSRF check is mounted for this route</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> The file registers a state-changing route and never mentions csrf or csurf. It looks for post, put, patch, or delete.</p><p><span class="k">Clears when.</span> csrf middleware is present.</p><p><span class="k">Cannot see.</span> A check mounted in another file is not visible. Every state-changing route in the file is reported.</p><p>Clone likeness: 0.141. Patched twin: 0.125.</p><p class="muted">CWE-352 · js.csrf.missing · waiver id 7c42c59848cb8194</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Session" data-subclass="Cross-site request forgery" data-finding="State-changing route has no CSRF check" data-problem="This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user." data-where="vulnerable-rest-api-main/server/routes/users.js:69" data-code="router.post('/otp', async(req,res)=&gt;{ const user = await User.findOne({username: req.body.username}); if(!user.email) return res.status(404).send('User does not exist!'); // generate the …" data-confidence="medium" data-confidence-rank="1" data-next="Confirm a CSRF check is mounted for this route" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="a777ba3b-ba55-44b1-b932-d739863147f5" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Session</td>
+      <td class="subclass">Cross-site request forgery</td>
+      <td>State-changing route has no CSRF check</td>
+      <td class="problem">This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user.</td>
+      <td class="where">vulnerable-rest-api-main/server/routes/users.js:69</td>
+      <td class="code"><code>router.post('/otp', async(req,res)=&gt;{
+    const user = await User.findOne({username: req.body.username});
+    if(!user.email) return res.status(404).send('User does not exist!');
+
+    // generate the …</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm a CSRF check is mounted for this route</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> The file registers a state-changing route and never mentions csrf or csurf. It looks for post, put, patch, or delete.</p><p><span class="k">Clears when.</span> csrf middleware is present.</p><p><span class="k">Cannot see.</span> A check mounted in another file is not visible. Every state-changing route in the file is reported.</p><p>Clone likeness: 0.141. Patched twin: 0.125.</p><p class="muted">CWE-352 · js.csrf.missing · waiver id 96a43ac8b2a338ad</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Session" data-subclass="Cross-site request forgery" data-finding="State-changing route has no CSRF check" data-problem="This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user." data-where="vulnerable-rest-api-main/server/routes/users.js:93" data-code="router.post('/verify', async(req,res)=&gt;{ const user = await Token.findOne({userId: req.body.user.userId}).sort({&quot;createdAt&quot;: -1}).limit(1); if(!user) return res.status(401).send('Token has exp…" data-confidence="medium" data-confidence-rank="1" data-next="Confirm a CSRF check is mounted for this route" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="fdfae316-1e88-45f1-8af8-409fcc7856af" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Session</td>
+      <td class="subclass">Cross-site request forgery</td>
+      <td>State-changing route has no CSRF check</td>
+      <td class="problem">This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user.</td>
+      <td class="where">vulnerable-rest-api-main/server/routes/users.js:93</td>
+      <td class="code"><code>router.post('/verify', async(req,res)=&gt;{
+    const user = await Token.findOne({userId: req.body.user.userId}).sort({&quot;createdAt&quot;: -1}).limit(1);
+    if(!user) return res.status(401).send('Token has exp…</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm a CSRF check is mounted for this route</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> The file registers a state-changing route and never mentions csrf or csurf. It looks for post, put, patch, or delete.</p><p><span class="k">Clears when.</span> csrf middleware is present.</p><p><span class="k">Cannot see.</span> A check mounted in another file is not visible. Every state-changing route in the file is reported.</p><p>Clone likeness: 0.141. Patched twin: 0.125.</p><p class="muted">CWE-352 · js.csrf.missing · waiver id be32eea2f2ea4bfd</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Session" data-subclass="Cross-site request forgery" data-finding="State-changing route has no CSRF check" data-problem="This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user." data-where="vulnerable-rest-api-main/server/routes/users.js:111" data-code="router.delete('/:id', [auth, validateObjectId], async(req,res)=&gt;{ const user = await User.findByIdAndRemove({_id: req.params.id}); if(!user) return res.status(404).send('The user with the giv…" data-confidence="medium" data-confidence-rank="1" data-next="Confirm a CSRF check is mounted for this route" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="f321439a-f7e8-45e0-aa7a-7d229b0368ab" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Session</td>
+      <td class="subclass">Cross-site request forgery</td>
+      <td>State-changing route has no CSRF check</td>
+      <td class="problem">This file registers a state-changing route and does not mention a CSRF check. Another site can submit the form as the signed-in user.</td>
+      <td class="where">vulnerable-rest-api-main/server/routes/users.js:111</td>
+      <td class="code"><code>router.delete('/:id', [auth, validateObjectId], async(req,res)=&gt;{
+    const user = await User.findByIdAndRemove({_id: req.params.id});
+
+    if(!user) return res.status(404).send('The user with the giv…</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm a CSRF check is mounted for this route</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> The file registers a state-changing route and never mentions csrf or csurf. It looks for post, put, patch, or delete.</p><p><span class="k">Clears when.</span> csrf middleware is present.</p><p><span class="k">Cannot see.</span> A check mounted in another file is not visible. Every state-changing route in the file is reported.</p><p>Clone likeness: 0.141. Patched twin: 0.125.</p><p class="muted">CWE-352 · js.csrf.missing · waiver id a430c4f42f95cb73</p></div>
+    </details></td></tr>
+    </tbody><tbody class="finding" data-risk="medium" data-risk-rank="2" data-class="Sensitive data" data-subclass="Sensitive data in response" data-finding="Full record sent in a JSON response" data-problem="The query does not limit columns, and the result is sent as JSON. A user record includes the password hash." data-where="vulnerable-rest-api-main/server/routes/usersDev.js:7" data-code="const users = await User.find();" data-confidence="medium" data-confidence-rank="1" data-next="Confirm the response lists only the fields the client needs" data-gate="comment" data-gate-rank="1">
+    <tr>
+      <td><select class="risk-select risk-medium" data-finding="126db6e6-4f4c-45e2-a0f1-19cca57d3e77" aria-label="Risk rating"><option value="critical">critical</option><option value="high">high</option><option value="medium" selected>medium</option><option value="low">low</option><option value="informational">informational</option></select></td>
+      <td>Sensitive data</td>
+      <td class="subclass">Sensitive data in response</td>
+      <td>Full record sent in a JSON response</td>
+      <td class="problem">The query does not limit columns, and the result is sent as JSON. A user record includes the password hash.</td>
+      <td class="where">vulnerable-rest-api-main/server/routes/usersDev.js:7</td>
+      <td class="code"><code>const users = await User.find();</code></td>
+      <td>medium (0.45)</td>
+      <td>Confirm the response lists only the fields the client needs</td>
+      <td><span class="chip status-comment">comment</span></td>
+    </tr><tr class="detail"><td colspan="10"><details>
+      <summary>Why this fired</summary>
+      <div class="triage"><p><span class="k">Why.</span> A model query with no attributes list is sent with res.json or res.send in the same continuation. It looks for findAll, find, findOne, or res.json.</p><p><span class="k">Clears when.</span> attributes list is present.</p><p><span class="k">Cannot see.</span> A render call is not a JSON response. The column names are not read from the model.</p><p>Clone likeness: 0.203. Patched twin: 0.188.</p><p class="muted">CWE-200 · js.sensitive.response · waiver id 3304df7213026457</p></div>
+    </details></td></tr>
+    </tbody>
+      </table>
+      </div>
+    </section>
+    <section class="charts">
+      <div class="chart card">
+    <h2>Risk</h2>
+    <p class="note">Findings in each risk classification.</p>
+    <ul class="bars"><li>
+      <span class="bar-label">critical</span>
+      <span class="bar-track"><span class="bar-fill fill-critical" style="width:0%"></span></span>
+      <span class="bar-count">0</span>
+    </li><li>
+      <span class="bar-label">high</span>
+      <span class="bar-track"><span class="bar-fill fill-high" style="width:54.5%"></span></span>
+      <span class="bar-count">18</span>
+    </li><li>
+      <span class="bar-label">medium</span>
+      <span class="bar-track"><span class="bar-fill fill-medium" style="width:100%"></span></span>
+      <span class="bar-count">33</span>
+    </li><li>
+      <span class="bar-label">low</span>
+      <span class="bar-track"><span class="bar-fill fill-low" style="width:0%"></span></span>
+      <span class="bar-count">0</span>
+    </li></ul>
+  </div>
+      <div class="chart card">
+    <h2>Pull status</h2>
+    <p class="note">Findings that block, comment, or were cleared.</p>
+    <ul class="bars"><li>
+      <span class="bar-label">block</span>
+      <span class="bar-track"><span class="bar-fill fill-block" style="width:54.5%"></span></span>
+      <span class="bar-count">18</span>
+    </li><li>
+      <span class="bar-label">comment</span>
+      <span class="bar-track"><span class="bar-fill fill-comment" style="width:100%"></span></span>
+      <span class="bar-count">33</span>
+    </li><li>
+      <span class="bar-label">cleared</span>
+      <span class="bar-track"><span class="bar-fill fill-clear" style="width:0%"></span></span>
+      <span class="bar-count">0</span>
+    </li></ul>
+  </div>
+    </section>
+    <section class="history card" id="report-archive">
+    <h2>Report archive</h2>
+    <p class="note">Earlier versions of this report, with the date and time each one was saved.</p>
+    <p class="muted">No earlier versions yet.</p>
+  </section>
+  </div>
+  <script>
+    (function () {
+      document.querySelectorAll(".risk-select").forEach((select) => {
+        select.dataset.saved = select.value;
+        select.addEventListener("change", () => {
+          const status = document.getElementById("risk-status");
+          const url = document.body.getAttribute("data-rating-url") || "";
+          if (!url) {
+            select.value = select.dataset.saved || select.value;
+            if (status) status.textContent = "This report has no save address.";
+            return;
+          }
+          if (status) status.textContent = "Saving rating…";
+          select.disabled = true;
+          const form = document.createElement("form");
+          form.method = "POST";
+          form.action = url;
+          const fields = {
+            finding_id: select.getAttribute("data-finding") || "",
+            risk_rating: select.value,
+            role: document.body.getAttribute("data-role") || "",
+            token: document.body.getAttribute("data-rating-token") || "",
+          };
+          for (const [name, value] of Object.entries(fields)) {
+            const input = document.createElement("input");
+            input.type = "hidden";
+            input.name = name;
+            input.value = value;
+            form.appendChild(input);
+          }
+          document.body.appendChild(form);
+          form.submit();
+        });
+      });
+      const table = document.getElementById("findings");
+      if (!table) return;
+      table.querySelectorAll(".similar-toggle").forEach((button) => {
+        button.addEventListener("click", () => {
+          const panel = button.closest("tbody") && button.closest("tbody").querySelector(".similar-row");
+          if (!panel) return;
+          const open = panel.hasAttribute("hidden");
+          panel.toggleAttribute("hidden", !open);
+          button.setAttribute("aria-expanded", open ? "true" : "false");
+        });
+      });
+      const headers = [...table.querySelectorAll("thead th[data-sort]")];
+      const count = document.getElementById("finding-count");
+      const clear = document.getElementById("clear-filters");
+      let sortKey = "risk";
+      let sortDir = 1;
+      function groups() {
+        return [...table.querySelectorAll("tbody.finding")];
+      }
+      function compare(left, right) {
+        const leftRank = left.getAttribute("data-" + sortKey + "-rank");
+        const rightRank = right.getAttribute("data-" + sortKey + "-rank");
+        if (leftRank !== null && rightRank !== null) return (Number(leftRank) - Number(rightRank)) * sortDir;
+        const leftText = left.getAttribute("data-" + sortKey) || "";
+        const rightText = right.getAttribute("data-" + sortKey) || "";
+        return leftText.localeCompare(rightText, undefined, { numeric: true, sensitivity: "base" }) * sortDir;
+      }
+      function apply() {
+        const filters = {};
+        table.querySelectorAll("[data-filter]").forEach((input) => {
+          filters[input.getAttribute("data-filter")] = input.value.trim().toLowerCase();
+        });
+        const rows = groups().sort(compare);
+        let shown = 0;
+        for (const row of rows) {
+          table.appendChild(row);
+          const hide = Object.entries(filters).some(([key, query]) => {
+            if (!query) return false;
+            return !(row.getAttribute("data-" + key) || "").toLowerCase().includes(query);
+          });
+          row.hidden = hide;
+          if (!hide) shown += 1;
+        }
+        if (count) {
+          const total = rows.length;
+          count.textContent = shown === total ? (total === 1 ? "1 finding" : total + " findings") : "Showing " + shown + " of " + total;
+        }
+        headers.forEach((headerCell) => {
+          const key = headerCell.getAttribute("data-sort");
+          headerCell.setAttribute("aria-sort", key === sortKey ? (sortDir === 1 ? "ascending" : "descending") : "none");
+        });
+      }
+      headers.forEach((headerCell) => {
+        const button = headerCell.querySelector("button");
+        if (!button) return;
+        button.addEventListener("click", () => {
+          const key = headerCell.getAttribute("data-sort");
+          if (sortKey === key) sortDir *= -1;
+          else {
+            sortKey = key;
+            sortDir = 1;
+          }
+          apply();
+        });
+      });
+      table.querySelectorAll("[data-filter]").forEach((input) => {
+        input.addEventListener("input", apply);
+        input.addEventListener("change", apply);
+      });
+      if (clear) {
+        clear.addEventListener("click", () => {
+          table.querySelectorAll("[data-filter]").forEach((input) => { input.value = ""; });
+          apply();
+        });
+      }
+      apply();
+    }());
+  </script>
+</body>
+</html>

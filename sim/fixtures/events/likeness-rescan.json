@@ -1,0 +1,11 @@
+{
+  "delivery_id": "evt-likeness-2",
+  "repo_id": "repo-clone",
+  "repo_name": "clone-order",
+  "service_id": "svc-clone",
+  "service_name": "clone-order",
+  "owner_team_id": "team-checkout",
+  "data_class": "internal",
+  "commit_sha": "clone222",
+  "source_dir": "fixtures/repos/clone-order"
+}

@@ -1,0 +1,11 @@
+{
+  "delivery_id": "evt-unlocked-1",
+  "repo_id": "repo-unlocked",
+  "repo_name": "unlocked",
+  "service_id": "svc-unlocked",
+  "service_name": "unlocked",
+  "owner_team_id": "team-checkout",
+  "data_class": "internal",
+  "commit_sha": "unlocked111",
+  "source_dir": "fixtures/repos/unlocked"
+}
